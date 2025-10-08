@@ -16,7 +16,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Link as InternalLink } from 'react-router-dom';
 
 import { Alert, Box, Button, Link as ExternalLink, Flex, Text } from 'design';
@@ -27,7 +27,9 @@ import {
   InfoParagraph,
   InfoUl,
   ReferenceLinks,
+  useInfoGuide,
 } from 'shared/components/SlidingSidePanel/InfoGuide';
+import { useEscape } from 'shared/hooks/useEscape';
 
 import { useServerSidePagination } from 'teleport/components/hooks';
 import {
@@ -38,8 +40,10 @@ import {
 import cfg from 'teleport/config';
 import { User } from 'teleport/services/user';
 
+import { useUsersUrlState } from './state';
 import { UserAddEdit } from './UserAddEdit';
 import { UserDelete } from './UserDelete';
+import { UserDetailsTitle } from './UserDetails';
 import UserList from './UserList';
 import UserReset from './UserReset';
 import useUsers, { State, UsersContainerProps } from './useUsers';
@@ -66,12 +70,16 @@ export function Users(props: State) {
     inviteCollaboratorsOpen,
     InviteCollaborators,
     EmailPasswordReset,
+    UserDetails,
     onEmailPasswordResetClose,
     fetch,
   } = props;
 
-  const [search, setSearch] = useState('');
+  const [usersUrlState, setUsersUrlState] = useUsersUrlState();
+  const { search, username } = usersUrlState;
   const abortControllerRef = useRef<AbortController | null>(null);
+  const { setInfoGuideConfig, infoGuideConfig } = useInfoGuide();
+  const detailsPanelWidth = 480;
 
   const serverSidePagination = useServerSidePagination<User>({
     pageSize: 20,
@@ -86,20 +94,86 @@ export function Users(props: State) {
     params: { search },
   });
 
+  // Cleanup controller on unmount
   useEffect(() => {
-    // Cancel previous request and create new controller
     abortControllerRef.current?.abort();
     abortControllerRef.current = new AbortController();
 
     serverSidePagination.fetch();
   }, [search]);
 
-  // Cleanup controller on unmount
   useEffect(() => {
     return () => {
       abortControllerRef.current?.abort();
     };
   }, []);
+
+  const selectedUser =
+    username && serverSidePagination.attempt.status === 'success'
+      ? serverSidePagination.fetchedData.agents.find(
+          u => u.name === username
+        ) || null
+      : null;
+
+  useEscape(() => {
+    if (username) {
+      setCurrentUser(null);
+    }
+  });
+
+  // open panel for selected User
+  useEffect(() => {
+    if (selectedUser) {
+      setInfoGuideConfig({
+        guide: (
+          <UserDetails
+            user={selectedUser}
+            canEdit={usersAcl.edit}
+            onEdit={() => onStartEdit(selectedUser)}
+          />
+        ),
+        title: (
+          <UserDetailsTitle
+            user={selectedUser}
+            onEdit={() => onStartEdit(selectedUser)}
+            onReset={() => onStartReset(selectedUser)}
+            onDelete={() => onStartDelete(selectedUser)}
+            canEdit={usersAcl.edit}
+            canDelete={usersAcl.remove}
+            panelWidth={detailsPanelWidth}
+          />
+        ),
+        panelWidth: detailsPanelWidth,
+      });
+    } else {
+      setInfoGuideConfig(null);
+    }
+  }, [
+    selectedUser,
+    UserDetails,
+    usersAcl,
+    onStartEdit,
+    onStartReset,
+    onStartDelete,
+  ]);
+
+  const prevInfoGuideConfig = useRef(infoGuideConfig);
+
+  // detect closed panel
+  useEffect(() => {
+    if (prevInfoGuideConfig.current && !infoGuideConfig && username) {
+      setCurrentUser(null);
+    }
+    prevInfoGuideConfig.current = infoGuideConfig;
+  }, [infoGuideConfig, username]);
+
+  const setCurrentUser = (user: User | null) => {
+    setUsersUrlState(prev => ({ ...prev, username: user?.name || null }));
+  };
+
+  const onUserClick = (user: User) => {
+    setCurrentUser(user);
+  };
 
   const requiredPermissions = Object.entries(usersAcl)
     .map(([key, value]) => {
@@ -221,12 +295,16 @@ export function Users(props: State) {
       )}
       <UserList
         serversidePagination={serverSidePagination}
-        onSearchChange={setSearch}
+        onSearchChange={search =>
+          setUsersUrlState(prev => ({ ...prev, search }))
+        }
         search={search}
         onEdit={onStartEdit}
         onDelete={onStartDelete}
         onReset={onStartReset}
+        onUserClick={onUserClick}
         usersAcl={usersAcl}
+        selectedUser={selectedUser}
       />
       {(operation.type === 'create' || operation.type === 'edit') && (
         <UserAddEdit
