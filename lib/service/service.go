@@ -364,6 +364,7 @@ func newConnector(clientIdentity, serverIdentity *state.Identity) (*Connector, e
 	c := &Connector{
 		clusterName: clientIdentity.ClusterName,
 		hostID:      clientIdentity.ID.HostUUID,
+		scope:       clientIdentity.AgentScope,
 		role:        clientIdentity.ID.Role,
 	}
 	c.clientState.Store(clientState)
@@ -431,6 +432,7 @@ type connectorState struct {
 type Connector struct {
 	clusterName string
 	hostID      string
+	scope       string
 	role        types.SystemRole
 
 	// clientState contains the current connector state for outbound connections
@@ -462,6 +464,11 @@ func (c *Connector) HostID() string {
 // HostUUID returns the plain host UUID.
 func (c *Connector) HostUUID() string {
 	return strings.TrimSuffix(c.hostID, "."+c.clusterName)
+}
+
+// Scope returns the host's AgentScope
+func (c *Connector) Scope() string {
+	return c.scope
 }
 
 func (c *Connector) Role() types.SystemRole {
@@ -3453,6 +3460,7 @@ func (process *TeleportProcess) initSSH() error {
 			process.proxyPublicAddr(),
 			conn.Client,
 			regular.SetUUID(conn.HostUUID()),
+			regular.SetScope(conn.Scope()),
 			regular.SetLimiter(limiter),
 			regular.SetEmitter(&events.StreamerAndEmitter{Emitter: asyncEmitter, Streamer: conn.Client}),
 			regular.SetLabels(cfg.SSH.Labels, cfg.SSH.CmdLabels, process.cloudLabels),
