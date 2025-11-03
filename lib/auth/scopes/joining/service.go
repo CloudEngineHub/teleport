@@ -29,7 +29,6 @@ import (
 
 	"github.com/gravitational/teleport"
 	headerv1 "github.com/gravitational/teleport/api/gen/proto/go/teleport/header/v1"
-	joiningv1 "github.com/gravitational/teleport/api/gen/proto/go/teleport/scopes/joining/v1"
 	scopedjoiningv1 "github.com/gravitational/teleport/api/gen/proto/go/teleport/scopes/joining/v1"
 	"github.com/gravitational/teleport/api/types"
 	"github.com/gravitational/teleport/lib/authz"
@@ -195,7 +194,7 @@ func makeCursor(token *scopedjoiningv1.ScopedToken) string {
 func (s *Server) scopedTokenIter(ctx context.Context, req *scopedjoiningv1.ListScopedTokensRequest) iter.Seq2[*scopedjoiningv1.ScopedToken, error] {
 	return func(yield func(token *scopedjoiningv1.ScopedToken, err error) bool) {
 		iterReq := proto.CloneOf(req)
-		iterReq.Limit = uint32(s.maxPageSize)
+		iterReq.Limit = s.maxPageSize
 
 		var cursorFound bool
 		for {
@@ -242,7 +241,7 @@ func (s *Server) ListScopedTokens(ctx context.Context, req *scopedjoiningv1.List
 		limit = defaultTokenPageSize
 	}
 
-	var authorizedTokens []*joiningv1.ScopedToken
+	var authorizedTokens []*scopedjoiningv1.ScopedToken
 	for token, err := range s.scopedTokenIter(ctx, req) {
 		if err != nil {
 			return nil, trace.Wrap(err)

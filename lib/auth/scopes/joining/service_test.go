@@ -21,7 +21,6 @@ import (
 	"context"
 	"slices"
 	"testing"
-	"time"
 
 	gocmp "github.com/google/go-cmp/cmp"
 	"github.com/gravitational/trace"
@@ -40,136 +39,281 @@ import (
 	"github.com/gravitational/teleport/lib/backend"
 	"github.com/gravitational/teleport/lib/backend/memory"
 	scopedaccess "github.com/gravitational/teleport/lib/scopes/access"
-	scopedaccesscache "github.com/gravitational/teleport/lib/scopes/cache/access"
 	"github.com/gravitational/teleport/lib/services"
 	"github.com/gravitational/teleport/lib/services/local"
 	"github.com/gravitational/teleport/lib/utils/log/logtest"
 )
 
-func TestScopedJoiningService(t *testing.T) {
-	pack := newBackendPack(t)
-	service := pack.scopedTokenService
-
-	cases := []struct{
-		name string
-		accessInfo *services.AccessInfo,
-	}{
-
-	}
-	newServerForIdentity(t, pack, &services.AccessInfo{
-		ScopePin: &scopesv1.Pin{
-			Scope: "/staging",
-			Assignments: map[string]*scopesv1.PinnedAssignments{
-				"/staging": {
-					Roles: []string{"staging-admin"},
-				},
-			},
-		},
+func createToken(ctx context.Context, server *joining.Server, token *joiningv1.ScopedToken) (*joiningv1.ScopedToken, error) {
+	res, err := server.CreateScopedToken(ctx, &joiningv1.CreateScopedTokenRequest{
+		Token: proto.CloneOf(token),
 	})
-	token := &joiningv1.ScopedToken{
-		Kind:    types.KindScopedToken,
-		Version: types.V1,
-		Metadata: &headerv1.Metadata{
-			Name: "testtoken",
-		},
-		Scope: "/test",
-		Spec: &joiningv1.ScopedTokenSpec{
-			AssignedScope: "/test/aa",
-			JoinMethod:    "token",
-			Roles:         []string{"Node"},
-		},
+	if err != nil {
+		return nil, err
 	}
 
-	created, err := service.CreateScopedToken(ctx, &joiningv1.CreateScopedTokenRequest{
-		Token: token,
-	})
-	require.NoError(t, err)
-	cmpOpts := []gocmp.Option{
-		protocmp.IgnoreFields(&headerv1.Metadata{}, "revision"),
-		protocmp.Transform(),
-	}
-	assert.Empty(t, gocmp.Diff(token, created.GetToken(), cmpOpts...))
-
-	tokenWithMismatchedScope := proto.CloneOf(token)
-	tokenWithMismatchedScope.Metadata.Name = "invalid-token"
-	tokenWithMismatchedScope.Spec.AssignedScope = "/stage/aa"
-
-	// make sure update is no-op
-	_, err = service.UpdateScopedToken(ctx, &joiningv1.UpdateScopedTokenRequest{})
-	require.True(t, trace.IsNotImplemented(err))
-
-	_, err = service.CreateScopedToken(ctx, &joiningv1.CreateScopedTokenRequest{
-		Token: tokenWithMismatchedScope,
-	})
-	assert.True(t, trace.IsBadParameter(err))
-
-	tokenWithoutName := proto.CloneOf(token)
-	tokenWithoutName.Metadata.Name = ""
-	createdWithoutName, err := service.CreateScopedToken(ctx, &joiningv1.CreateScopedTokenRequest{
-		Token: tokenWithoutName,
-	})
-	require.NoError(t, err)
-	require.NotEmpty(t, createdWithoutName.Token.GetMetadata().GetName())
-
-	// get token
-	fetched, err := service.GetScopedToken(ctx, &joiningv1.GetScopedTokenRequest{
-		Name: token.Metadata.Name,
-	})
-	require.NoError(t, err)
-	assert.Empty(t, gocmp.Diff(token, fetched.GetToken(), cmpOpts...))
-
-	// delete token
-	_, err = service.DeleteScopedToken(ctx, &joiningv1.DeleteScopedTokenRequest{
-		Name: token.Metadata.Name,
-	})
-	require.NoError(t, err)
-
-	// create some tokens
-	token.Spec.AssignedScope = "/test/bb"
-	_, err = service.CreateScopedToken(ctx, &joiningv1.CreateScopedTokenRequest{
-		Token: token,
-	})
-	require.NoError(t, err)
-
-	token2 := proto.CloneOf(token)
-	token2.Metadata.Name = "testtoken2"
-	token2.Scope = "/test/aa"
-	token2.Spec.AssignedScope = "/test/aa"
-	_, err = service.CreateScopedToken(ctx, &joiningv1.CreateScopedTokenRequest{
-		Token: token2,
-	})
-	require.NoError(t, err)
-
-	token3 := proto.CloneOf(token)
-	token3.Metadata.Name = "testtoken3"
-	token3.Scope = "/test/bb"
-	token3.Spec.AssignedScope = "/test/bb"
-	_, err = service.CreateScopedToken(ctx, &joiningv1.CreateScopedTokenRequest{
-		Token: token3,
-	})
-	require.NoError(t, err)
-
-	res, err := service.ListScopedTokens(ctx, &joiningv1.ListScopedTokensRequest{
-		ResourceScope: &scopesv1.Filter{
-			Mode:  scopesv1.Mode_MODE_POLICIES_APPLICABLE_TO_SCOPE,
-			Scope: "/test/aa",
-		},
-	})
-	require.NoError(t, err)
-	assert.Len(t, res.Tokens, 3)
-	sortFn := func(left *joiningv1.ScopedToken, right *joiningv1.ScopedToken) int {
-		return cmp.Compare(left.Metadata.Name, right.Metadata.Name)
-	}
-
-	expected := []*joiningv1.ScopedToken{token, tokenWithoutName, token2}
-	slices.SortStableFunc(res.Tokens, sortFn)
-	slices.SortStableFunc(expected, sortFn)
-	for idx, token := range res.Tokens {
-		assert.Empty(t, gocmp.Diff(expected[idx], token, cmpOpts...))
-	}
+	return res.GetToken(), nil
 }
 
-const testClusterName = "test-cluster"
+func TestScopedJoiningService(t *testing.T) {
+	ctx := t.Context()
+	pack := newBackendPack(t)
+
+	t.Run("basic", func(t *testing.T) {
+		service := newServerForIdentity(t, pack, &services.AccessInfo{
+			ScopePin: &scopesv1.Pin{
+				Scope: "/staging",
+				Assignments: map[string]*scopesv1.PinnedAssignments{
+					"/staging": {
+						Roles: []string{"staging-admin"},
+					},
+				},
+			},
+		})
+
+		baseToken := &joiningv1.ScopedToken{
+			Kind:     types.KindScopedToken,
+			Version:  types.V1,
+			Scope:    "/staging",
+			Metadata: &headerv1.Metadata{},
+			Spec: &joiningv1.ScopedTokenSpec{
+				AssignedScope: "/staging/aa",
+				JoinMethod:    "token",
+				Roles:         []string{"Node"},
+			},
+		}
+
+		// create a token
+		token, err := createToken(ctx, service, baseToken)
+		require.NoError(t, err)
+
+		withoutNameOpts := []gocmp.Option{
+			protocmp.IgnoreFields(&headerv1.Metadata{}, "revision"),
+			protocmp.IgnoreFields(&headerv1.Metadata{}, "name"),
+			protocmp.Transform(),
+		}
+		cmpOpts := []gocmp.Option{
+			protocmp.IgnoreFields(&headerv1.Metadata{}, "revision"),
+			protocmp.Transform(),
+		}
+		assert.Empty(t, gocmp.Diff(baseToken, token, withoutNameOpts...))
+
+		// make sure update is no-op
+		_, err = service.UpdateScopedToken(ctx, &joiningv1.UpdateScopedTokenRequest{})
+		require.True(t, trace.IsNotImplemented(err))
+
+		// fail to create a token with an assigned scope that is orthogonal to its own
+		tokenWithMismatchedScope := proto.CloneOf(baseToken)
+		tokenWithMismatchedScope.Metadata.Name = "invalid-token"
+		tokenWithMismatchedScope.Spec.AssignedScope = "/prod/aa"
+		_, err = createToken(ctx, service, tokenWithMismatchedScope)
+		assert.True(t, trace.IsBadParameter(err))
+
+		// create a token with an explicit name
+		namedToken := proto.CloneOf(baseToken)
+		namedToken.Metadata.Name = "named-token"
+		namedToken, err = createToken(ctx, service, namedToken)
+		require.NoError(t, err)
+		require.NotEmpty(t, namedToken.Metadata.Name)
+
+		// fetch a token
+		fetched, err := service.GetScopedToken(ctx, &joiningv1.GetScopedTokenRequest{
+			Name: token.Metadata.Name,
+		})
+		require.NoError(t, err)
+		assert.Empty(t, gocmp.Diff(token, fetched.GetToken(), cmpOpts...))
+
+		// delete a token
+		_, err = service.DeleteScopedToken(ctx, &joiningv1.DeleteScopedTokenRequest{
+			Name: namedToken.Metadata.Name,
+		})
+		require.NoError(t, err)
+
+		// create some tokens to list
+		tokenStagingBB := proto.CloneOf(baseToken)
+		tokenStagingBB.Scope = "/staging/bb"
+		tokenStagingBB.Spec.AssignedScope = "/staging/bb"
+		_, err = createToken(ctx, service, tokenStagingBB)
+		require.NoError(t, err)
+
+		tokenStagingCC1 := proto.CloneOf(baseToken)
+		tokenStagingCC1.Scope = "/staging/cc"
+		tokenStagingCC1.Spec.AssignedScope = "/staging/cc"
+		tokenStagingCC1, err = createToken(ctx, service, tokenStagingCC1)
+		require.NoError(t, err)
+
+		tokenStagingCC2 := proto.CloneOf(baseToken)
+		tokenStagingCC2.Scope = "/staging/cc"
+		tokenStagingCC2.Spec.AssignedScope = "/staging/cc"
+		tokenStagingCC2, err = createToken(ctx, service, tokenStagingCC2)
+		require.NoError(t, err)
+
+		// list tokens while filtering their resource scope
+		res, err := service.ListScopedTokens(ctx, &joiningv1.ListScopedTokensRequest{
+			ResourceScope: &scopesv1.Filter{
+				Mode:  scopesv1.Mode_MODE_RESOURCES_SUBJECT_TO_SCOPE,
+				Scope: "/staging/cc",
+			},
+		})
+		require.NoError(t, err)
+		assert.Len(t, res.Tokens, 2)
+		sortFn := func(left *joiningv1.ScopedToken, right *joiningv1.ScopedToken) int {
+			return cmp.Compare(left.Metadata.Name, right.Metadata.Name)
+		}
+
+		expected := []*joiningv1.ScopedToken{tokenStagingCC1, tokenStagingCC2}
+		slices.SortStableFunc(res.Tokens, sortFn)
+		slices.SortStableFunc(expected, sortFn)
+		for idx, token := range res.Tokens {
+			assert.Empty(t, gocmp.Diff(expected[idx], token, cmpOpts...))
+		}
+	})
+
+	t.Run("auth", func(t *testing.T) {
+		admin := newServerForIdentity(t, pack, &services.AccessInfo{
+			ScopePin: &scopesv1.Pin{
+				Scope: "/staging",
+				Assignments: map[string]*scopesv1.PinnedAssignments{
+					"/staging": {
+						Roles: []string{"staging-admin"},
+					},
+				},
+			},
+		})
+
+		writer := newServerForIdentity(t, pack, &services.AccessInfo{
+			ScopePin: &scopesv1.Pin{
+				Scope: "/staging/aa",
+				Assignments: map[string]*scopesv1.PinnedAssignments{
+					"/staging/aa": {
+						Roles: []string{"staging-create"},
+					},
+				},
+			},
+		})
+
+		reader := newServerForIdentity(t, pack, &services.AccessInfo{
+			ScopePin: &scopesv1.Pin{
+				Scope: "/staging/aa",
+				Assignments: map[string]*scopesv1.PinnedAssignments{
+					"/staging/aa": {
+						Roles: []string{"staging-read"},
+					},
+				},
+			},
+		})
+
+		deleter := newServerForIdentity(t, pack, &services.AccessInfo{
+			ScopePin: &scopesv1.Pin{
+				Scope: "/staging/aa",
+				Assignments: map[string]*scopesv1.PinnedAssignments{
+					"/staging/aa": {
+						Roles: []string{"staging-delete"},
+					},
+				},
+			},
+		})
+
+		baseToken := &joiningv1.ScopedToken{
+			Kind:     types.KindScopedToken,
+			Version:  types.V1,
+			Scope:    "/staging/aa",
+			Metadata: &headerv1.Metadata{},
+			Spec: &joiningv1.ScopedTokenSpec{
+				AssignedScope: "/staging/aa",
+				JoinMethod:    "token",
+				Roles:         []string{"Node"},
+			},
+		}
+
+		// ensure writer can create a token at an accessible scope
+		stageTokenAA, err := createToken(ctx, writer, baseToken)
+		require.NoError(t, err)
+
+		cmpOpts := []gocmp.Option{
+			protocmp.IgnoreFields(&headerv1.Metadata{}, "revision"),
+			protocmp.IgnoreFields(&headerv1.Metadata{}, "name"),
+			protocmp.Transform(),
+		}
+		assert.Empty(t, gocmp.Diff(baseToken, stageTokenAA, cmpOpts...))
+
+		// ensure writer can't create a token at an orthogonal scope
+		stageTokenBB := proto.CloneOf(baseToken)
+		stageTokenBB.Scope = "/staging/bb"
+		stageTokenBB.Spec.AssignedScope = "/staging/bb"
+		_, err = createToken(ctx, writer, stageTokenBB)
+		require.True(t, trace.IsAccessDenied(err))
+
+		// ensure other identities can't create a token
+		nonWriterIdents := []*joining.Server{reader, deleter}
+		for _, ident := range nonWriterIdents {
+			_, err = createToken(ctx, ident, baseToken)
+			require.True(t, trace.IsAccessDenied(err))
+		}
+
+		// create an orthogonal token for negative testing read ops
+		stageTokenBB, err = createToken(ctx, admin, stageTokenBB)
+		require.NoError(t, err)
+
+		// ensure reader can get token at accessible scope
+		getRes, err := reader.GetScopedToken(ctx, &joiningv1.GetScopedTokenRequest{
+			Name: stageTokenAA.Metadata.Name,
+		})
+		require.NoError(t, err)
+		require.Empty(t, gocmp.Diff(baseToken, getRes.GetToken(), cmpOpts...))
+
+		// ensure reader can't get token at orthogonal scope
+		_, err = reader.GetScopedToken(ctx, &joiningv1.GetScopedTokenRequest{
+			Name: stageTokenBB.Metadata.Name,
+		})
+		require.True(t, trace.IsAccessDenied(err))
+
+		// ensure other identities can't read a token
+		nonReaderIdents := []*joining.Server{writer, deleter}
+		for _, ident := range nonReaderIdents {
+			_, err = ident.GetScopedToken(ctx, &joiningv1.GetScopedTokenRequest{
+				Name: stageTokenAA.Metadata.Name,
+			})
+			require.True(t, trace.IsAccessDenied(err))
+		}
+
+		// ensure reader can list only accessible tokens
+		listRes, err := reader.ListScopedTokens(ctx, &joiningv1.ListScopedTokensRequest{})
+		require.NoError(t, err)
+		require.Len(t, listRes.GetTokens(), 1)
+
+		// ensure other identities can't list tokens
+		for _, ident := range nonReaderIdents {
+			listRes, err = ident.ListScopedTokens(ctx, &joiningv1.ListScopedTokensRequest{})
+			require.NoError(t, err)
+			require.Empty(t, listRes.GetTokens())
+		}
+
+		// reverse assertion order so we can confirm non-deleter identities fail before we actually
+		// delete the token
+
+		// ensure other identities can't delete a token
+		nonDeleterIdents := []*joining.Server{reader, writer}
+		for _, ident := range nonDeleterIdents {
+			_, err = ident.DeleteScopedToken(ctx, &joiningv1.DeleteScopedTokenRequest{
+				Name: stageTokenAA.Metadata.Name,
+			})
+			require.True(t, trace.IsAccessDenied(err))
+		}
+
+		// ensure deleter can delete a token
+		_, err = deleter.DeleteScopedToken(ctx, &joiningv1.DeleteScopedTokenRequest{
+			Name: stageTokenAA.Metadata.Name,
+		})
+		require.NoError(t, err)
+
+		// ensure deleter can't delete a token at an orthogonal scope
+		_, err = deleter.DeleteScopedToken(ctx, &joiningv1.DeleteScopedTokenRequest{
+			Name: stageTokenBB.Metadata.Name,
+		})
+		require.True(t, trace.IsAccessDenied(err))
+	})
+}
 
 // fakeSplitAuthorizer is a mock implementation of ScopedAuthorizer that provides a hard-coded context.
 type fakeSplitAuthorizer struct {
@@ -186,7 +330,7 @@ func (a *fakeSplitAuthorizer) AuthorizeScoped(ctx context.Context) (*authz.Scope
 func newFakeScopedAuthorizer(t *testing.T, accessInfo *services.AccessInfo, reader services.ScopedRoleReader) *fakeSplitAuthorizer {
 	t.Helper()
 
-	scopedCtx, err := services.NewScopedAccessCheckerContext(t.Context(), accessInfo, testClusterName, reader)
+	scopedCtx, err := services.NewScopedAccessCheckerContext(t.Context(), accessInfo, "test-cluster", reader)
 	require.NoError(t, err)
 
 	return &fakeSplitAuthorizer{
@@ -207,10 +351,8 @@ func newFakeScopedAuthorizer(t *testing.T, accessInfo *services.AccessInfo, read
 func newServerForIdentity(t *testing.T, bk *backendPack, accessInfo *services.AccessInfo) *joining.Server {
 	t.Helper()
 
-	var authz authz.ScopedAuthorizer
-	if accessInfo.ScopePin != nil {
-		authz = newFakeScopedAuthorizer(t, accessInfo, bk.cache)
-	}
+	authz := newFakeScopedAuthorizer(t, accessInfo, bk.service)
+	require.NotNil(t, accessInfo.ScopePin)
 
 	srv, err := joining.New(joining.Config{
 		ScopedAuthorizer: authz,
@@ -226,12 +368,10 @@ type backendPack struct {
 	backend            backend.Backend
 	service            *local.ScopedAccessService
 	classicService     *local.AccessService
-	cache              *scopedaccesscache.Cache
 	scopedTokenService *local.ScopedTokenService
 }
 
 func (p *backendPack) Close() {
-	p.cache.Close()
 	p.backend.Close()
 }
 
@@ -245,21 +385,8 @@ func newBackendPack(t *testing.T) *backendPack {
 
 	service := local.NewScopedAccessService(backend)
 	classicService := local.NewAccessService(backend)
-	events := local.NewEventsService(backend)
 	scopedTokenService, err := local.NewScopedTokenService(backend)
 	require.NoError(t, err)
-
-	cache, err := scopedaccesscache.NewCache(scopedaccesscache.CacheConfig{
-		Events: events,
-		Reader: service,
-	})
-	require.NoError(t, err)
-
-	select {
-	case <-cache.Init():
-	case <-time.After(30 * time.Second):
-		require.FailNow(t, "timed out waiting for scoped access cache to initialize")
-	}
 
 	roles := []*scopedaccessv1.ScopedRole{
 		{
@@ -274,7 +401,7 @@ func newBackendPack(t *testing.T) *backendPack {
 					Rules: []*scopedaccessv1.ScopedRule{
 						{
 							Resources: []string{types.KindScopedToken},
-							Verbs:     []string{types.VerbReadNoSecrets, types.VerbList, types.VerbCreate, types.VerbUpdate, types.VerbDelete},
+							Verbs:     []string{types.VerbCreate, types.VerbRead, types.VerbList, types.VerbDelete},
 						},
 					},
 				},
@@ -287,7 +414,7 @@ func newBackendPack(t *testing.T) *backendPack {
 			},
 			Scope: "/staging",
 			Spec: &scopedaccessv1.ScopedRoleSpec{
-				AssignableScopes: []string{"/staging"},
+				AssignableScopes: []string{"/staging/aa"},
 				Allow: &scopedaccessv1.ScopedRoleConditions{
 					Rules: []*scopedaccessv1.ScopedRule{
 						{
@@ -305,30 +432,12 @@ func newBackendPack(t *testing.T) *backendPack {
 			},
 			Scope: "/staging",
 			Spec: &scopedaccessv1.ScopedRoleSpec{
-				AssignableScopes: []string{"/staging"},
+				AssignableScopes: []string{"/staging/aa"},
 				Allow: &scopedaccessv1.ScopedRoleConditions{
 					Rules: []*scopedaccessv1.ScopedRule{
 						{
 							Resources: []string{types.KindScopedToken},
-							Verbs:     []string{types.VerbReadNoSecrets},
-						},
-					},
-				},
-			},
-			Version: types.V1,
-		}, {
-			Kind: scopedaccess.KindScopedRole,
-			Metadata: &headerv1.Metadata{
-				Name: "staging-list",
-			},
-			Scope: "/staging",
-			Spec: &scopedaccessv1.ScopedRoleSpec{
-				AssignableScopes: []string{"/staging"},
-				Allow: &scopedaccessv1.ScopedRoleConditions{
-					Rules: []*scopedaccessv1.ScopedRule{
-						{
-							Resources: []string{types.KindScopedToken},
-							Verbs:     []string{types.VerbList},
+							Verbs:     []string{types.VerbRead, types.VerbList},
 						},
 					},
 				},
@@ -341,7 +450,7 @@ func newBackendPack(t *testing.T) *backendPack {
 			},
 			Scope: "/staging",
 			Spec: &scopedaccessv1.ScopedRoleSpec{
-				AssignableScopes: []string{"/staging"},
+				AssignableScopes: []string{"/staging/aa"},
 				Allow: &scopedaccessv1.ScopedRoleConditions{
 					Rules: []*scopedaccessv1.ScopedRule{
 						{
@@ -364,7 +473,7 @@ func newBackendPack(t *testing.T) *backendPack {
 					Rules: []*scopedaccessv1.ScopedRule{
 						{
 							Resources: []string{types.KindScopedToken},
-							Verbs:     []string{types.VerbReadNoSecrets, types.VerbList, types.VerbCreate, types.VerbUpdate, types.VerbDelete},
+							Verbs:     []string{types.VerbRead, types.VerbList, types.VerbCreate, types.VerbUpdate, types.VerbDelete},
 						},
 					},
 				},
@@ -374,14 +483,16 @@ func newBackendPack(t *testing.T) *backendPack {
 	}
 
 	for _, role := range roles {
-		_, err := service.CreateScopedRole(t.Context(), role)
+		_, err := service.CreateScopedRole(t.Context(), &scopedaccessv1.CreateScopedRoleRequest{
+			Role: role,
+		})
 		require.NoError(t, err)
 	}
+
 	return &backendPack{
 		backend:            backend,
 		service:            service,
 		classicService:     classicService,
-		cache:              cache,
 		scopedTokenService: scopedTokenService,
 	}
 }
