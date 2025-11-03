@@ -332,6 +332,8 @@ func (s *Server) handleYamuxTunnel(c io.ReadWriteCloser, clientID *tlsca.Identit
 		switch tunnelType {
 		case types.NodeTunnel:
 			requiredRole = types.RoleNode
+		case types.KubeTunnel:
+			requiredRole = types.RoleKube
 		default:
 			return trace.BadParameter("unsupported tunnel type %q", tunnelType)
 		}
