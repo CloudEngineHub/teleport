@@ -306,6 +306,7 @@ func OriginLocalRedirectURI(redirectURL string) (string, error) {
 	}
 
 	resultURI := parsedURL.RequestURI()
+	// Basic auth is not just checking for @
 	if strings.HasPrefix(resultURI, "//") {
 		return "", trace.BadParameter("Invalid double slash redirect")
 	} else if strings.Contains(resultURI, "@") {

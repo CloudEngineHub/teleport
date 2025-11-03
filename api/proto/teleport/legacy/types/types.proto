@@ -5565,6 +5565,9 @@ message OIDCAuthRequest {
   teleport.attestation.v1.AttestationStatement tls_attestation_statement = 23 [(gogoproto.jsontag) = "tls_attestation_statement,omitempty"];
   // pkce_verifier is used to verified a generated code challenge.
   string pkce_verifier = 24 [(gogoproto.jsontag) = "pkce_verifier"];
+  // UsernameHint is an optional username/email provided by the client that will be passed
+  // to the IdP via the 'login_hint' query parameter.
+  string username_hint = 25 [(gogoproto.jsontag) = "username_hint,omitempty"];
 }
 
 // SAMLConnectorV2 represents a SAML connector.

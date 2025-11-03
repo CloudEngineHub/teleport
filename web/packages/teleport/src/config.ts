@@ -683,8 +683,14 @@ const cfg = {
     return searchString ? `${path}?${searchString}` : path;
   },
 
-  getSsoUrl(providerUrl, providerName, redirect) {
-    return cfg.baseUrl + generatePath(providerUrl, { redirect, providerName });
+  getSsoUrl(providerUrl, providerName, redirect, username) {
+    const basePath = cfg.baseUrl + generatePath(providerUrl, { redirect, providerName });
+
+    if (username) {
+      const separator = basePath.includes('?') ? '&' : '?';
+      return `${basePath}${separator}username=${encodeURIComponent(username)}`;
+    }
+    return basePath;
   },
 
   getAuditRoute(clusterId: string) {
