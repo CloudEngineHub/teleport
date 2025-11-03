@@ -1456,6 +1456,7 @@ func Run(ctx context.Context, args []string, opts ...CliOption) error {
 	gitCmd := newGitCommands(app)
 	pivCmd := newPIVCommands(app)
 	mcpCmd := newMCPCommands(app, &cf)
+	delegationCmd := newDelegationCommand(app)
 
 	if runtime.GOOS == constants.WindowsOS {
 		bench.Hidden()
@@ -1898,6 +1899,8 @@ func Run(ctx context.Context, args []string, opts ...CliOption) error {
 		err = mcpCmd.config.run()
 	case updateCommand.update.FullCommand():
 		err = updateCommand.update.run(&cf)
+	case delegationCmd.FullCommand():
+		err = delegationCmd.run(&cf)
 	default:
 		// Handle commands that might not be available.
 		switch {
