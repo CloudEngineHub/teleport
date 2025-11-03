@@ -175,7 +175,7 @@ func (s *Server) GetScopedToken(ctx context.Context, req *scopedjoiningv1.GetSco
 	}
 
 	if err := authzContext.CheckerContext.Decision(ctx, res.GetToken().GetScope(), func(checker *services.SplitAccessChecker) error {
-		return checker.Common().CheckAccessToRules(&ruleCtx, scopedaccess.KindScopedToken, types.VerbDelete)
+		return checker.Common().CheckAccessToRules(&ruleCtx, scopedaccess.KindScopedToken, types.VerbRead)
 	}); err != nil {
 		s.logger.WarnContext(ctx, "user does not have permission to read scoped tokens in the requested scope", "user", authzContext.User.GetName(), "scope", res.GetToken().GetScope())
 		return nil, trace.Wrap(err)
@@ -237,6 +237,11 @@ func (s *Server) ListScopedTokens(ctx context.Context, req *scopedjoiningv1.List
 		return nil, trace.Wrap(err)
 	}
 
+	limit := int(req.GetLimit())
+	if limit == 0 {
+		limit = defaultTokenPageSize
+	}
+
 	var authorizedTokens []*joiningv1.ScopedToken
 	for token, err := range s.scopedTokenIter(ctx, req) {
 		if err != nil {
@@ -251,13 +256,13 @@ func (s *Server) ListScopedTokens(ctx context.Context, req *scopedjoiningv1.List
 		authorizedTokens = append(authorizedTokens, token)
 
 		// stop once we've fulfilled the requested page size
-		if len(authorizedTokens) >= int(req.GetLimit()) {
+		if len(authorizedTokens) >= limit {
 			break
 		}
 	}
 
 	var lastToken *scopedjoiningv1.ScopedToken
-	if len(authorizedTokens) >= int(req.GetLimit()) {
+	if len(authorizedTokens) >= limit {
 		lastToken = authorizedTokens[len(authorizedTokens)-1]
 	}
 	return &scopedjoiningv1.ListScopedTokensResponse{
