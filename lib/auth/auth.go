@@ -122,6 +122,7 @@ import (
 	joinboundkeypair "github.com/gravitational/teleport/lib/join/boundkeypair"
 	"github.com/gravitational/teleport/lib/join/ec2join"
 	"github.com/gravitational/teleport/lib/join/env0"
+	"github.com/gravitational/teleport/lib/join/tpmjoin"
 	kubetoken "github.com/gravitational/teleport/lib/kube/token"
 	"github.com/gravitational/teleport/lib/limiter"
 	"github.com/gravitational/teleport/lib/loginrule"
@@ -1272,9 +1273,7 @@ type Server struct {
 
 	// tpmValidator allows TPMs to be validated by the auth server. It can be
 	// overridden for the purpose of tests.
-	tpmValidator func(
-		ctx context.Context, log *slog.Logger, params tpm.ValidateParams,
-	) (*tpm.ValidatedTPM, error)
+	tpmValidator tpmjoin.TPMValidator
 
 	// circleCITokenValidate allows ID tokens from CircleCI to be validated by
 	// the auth server. It can be overridden for the purpose of tests.

@@ -199,7 +199,8 @@ func joinWithClient(ctx context.Context, params JoinParams, client *joinv1.Clien
 		types.JoinMethodIAM,
 		types.JoinMethodEC2,
 		types.JoinMethodEnv0,
-		types.JoinMethodOracle:
+		types.JoinMethodOracle,
+		types.JoinMethodTPM:
 		joinMethod := string(params.JoinMethod)
 		joinMethodPtr = &joinMethod
 	default:
@@ -304,6 +305,8 @@ func joinWithMethod(
 		return oidcJoin(stream, joinParams, clientParams)
 	case types.JoinMethodOracle:
 		return oracleJoin(ctx, stream, joinParams, clientParams)
+	case types.JoinMethodTPM:
+		return tpmJoin(ctx, stream, joinParams, clientParams)
 	default:
 		// TODO(nklaassen): implement remaining join methods.
 		sendGivingUpErr := stream.Send(&messages.GivingUp{
