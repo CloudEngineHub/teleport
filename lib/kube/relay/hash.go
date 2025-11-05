@@ -39,10 +39,12 @@ func hashForTarget(teleportClusterName, kubeClusterName string) [hashLen]byte {
 	return buf
 }
 
-// SNIPrefixForTarget returns the domain label for the given target Kubernetes
-// cluster, usable in front of [SNISuffix] to reach a Kubernetes Service agent
-// serving the given Kube cluster through a Relay.
-func SNIPrefixForTarget(teleportClusterName, kubeClusterName string) string {
+// SNILabelForKubeCluster returns the domain label used in front of [SNISuffix]
+// to identify a Kubernetes cluster as the target for a passively routed Relay
+// connection. It consists of [SNIPrefixForKubeCluster] ("cluster-") followed by
+// the base32hex encoding of the SHA256 hash of Teleport cluster name and
+// Kubernetes cluster name, for a total of 60 ASCII lowercase characters.
+func SNILabelForKubeCluster(teleportClusterName, kubeClusterName string) string {
 	h := hashForTarget(teleportClusterName, kubeClusterName)
-	return base32hex.EncodeToString(h[:])
+	return SNIPrefixForKubeCluster + base32hex.EncodeToString(h[:])
 }
