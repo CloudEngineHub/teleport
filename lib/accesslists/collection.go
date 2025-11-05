@@ -21,6 +21,7 @@ package accesslists
 import (
 	"context"
 	"slices"
+	"strconv"
 
 	"github.com/gravitational/trace"
 
@@ -39,7 +40,7 @@ import (
 type Collection struct {
 	// MembersByAccessList maps access list names to their members
 	MembersByAccessList map[string][]*accesslist.AccessListMember
-	// AccessListMap is an internal map for fast lookup by name
+	// AccessListsByName is an internal map for fast lookup by name
 	AccessListsByName map[string]*accesslist.AccessList
 }
 
@@ -99,7 +100,41 @@ func (b *Collection) ListAccessListMembers(ctx context.Context, accessListName s
 	if !exists {
 		return nil, "", trace.NotFound("access list %q not found in batch", accessListName)
 	}
-	return members, "", nil
+
+	// Handle pagination
+	startIdx := 0
+	if pageToken != "" {
+		idx, err := strconv.Atoi(pageToken)
+		if err != nil {
+			return nil, "", trace.BadParameter("invalid page token: %v", err)
+		}
+		startIdx = idx
+	}
+
+	// If startIdx is beyond the members slice, return empty result
+	if startIdx >= len(members) {
+		return []*accesslist.AccessListMember{}, "", nil
+	}
+
+	// Calculate end index based on pageSize
+	endIdx := len(members)
+	if pageSize > 0 {
+		endIdx = startIdx + pageSize
+		if endIdx > len(members) {
+			endIdx = len(members)
+		}
+	}
+
+	// Slice members for this page
+	pageMembers := members[startIdx:endIdx]
+
+	// Generate next page token if there are more members
+	nextToken := ""
+	if endIdx < len(members) {
+		nextToken = strconv.Itoa(endIdx)
+	}
+
+	return pageMembers, nextToken, nil
 }
 
 // GetAccessListMember retrieves a specific member from an access list in the batch.

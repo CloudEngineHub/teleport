@@ -48,7 +48,7 @@ func TestCollection_RefUpdates(t *testing.T) {
 
 		collection := &Collection{
 			MembersByAccessList: make(map[string][]*accesslist.AccessListMember),
-			AccessListMap:       make(map[string]*accesslist.AccessList),
+			AccessListsByName:   make(map[string]*accesslist.AccessList),
 		}
 		collection.AddAccessList(list1, nil)
 		collection.AddAccessList(list2, []*accesslist.AccessListMember{list2Member})
@@ -76,7 +76,7 @@ func TestCollection_RefUpdates(t *testing.T) {
 
 		collection := &Collection{
 			MembersByAccessList: make(map[string][]*accesslist.AccessListMember),
-			AccessListMap:       make(map[string]*accesslist.AccessList),
+			AccessListsByName:   make(map[string]*accesslist.AccessList),
 		}
 		collection.AddAccessList(list1, nil)
 		collection.AddAccessList(list2, nil)
@@ -98,7 +98,7 @@ func TestCollection_RefUpdates(t *testing.T) {
 		// Create collection
 		collection := &Collection{
 			MembersByAccessList: make(map[string][]*accesslist.AccessListMember),
-			AccessListMap:       make(map[string]*accesslist.AccessList),
+			AccessListsByName:   make(map[string]*accesslist.AccessList),
 		}
 		collection.AddAccessList(list1, []*accesslist.AccessListMember{member})
 		collection.AddAccessList(list2, nil)
@@ -124,7 +124,7 @@ func TestCollection_RefUpdates(t *testing.T) {
 
 		collection := &Collection{
 			MembersByAccessList: make(map[string][]*accesslist.AccessListMember),
-			AccessListMap:       make(map[string]*accesslist.AccessList),
+			AccessListsByName:   make(map[string]*accesslist.AccessList),
 		}
 		collection.AddAccessList(ownerList, nil)
 		collection.AddAccessList(ownedList, nil)
@@ -140,7 +140,7 @@ func TestCollection_RefUpdates(t *testing.T) {
 	t.Run("handles empty collection", func(t *testing.T) {
 		collection := &Collection{
 			MembersByAccessList: make(map[string][]*accesslist.AccessListMember),
-			AccessListMap:       make(map[string]*accesslist.AccessList),
+			AccessListsByName:   make(map[string]*accesslist.AccessList),
 		}
 
 		err := collection.RefUpdates()
@@ -168,7 +168,7 @@ func TestCollection_RefUpdates(t *testing.T) {
 
 		collection := &Collection{
 			MembersByAccessList: make(map[string][]*accesslist.AccessListMember),
-			AccessListMap:       make(map[string]*accesslist.AccessList),
+			AccessListsByName:   make(map[string]*accesslist.AccessList),
 		}
 		collection.AddAccessList(ownerList1, nil)
 		collection.AddAccessList(ownerList2, nil)
@@ -193,7 +193,7 @@ func TestCollection_Validate(t *testing.T) {
 
 		collection := &Collection{
 			MembersByAccessList: make(map[string][]*accesslist.AccessListMember),
-			AccessListMap:       make(map[string]*accesslist.AccessList),
+			AccessListsByName:   make(map[string]*accesslist.AccessList),
 		}
 		collection.AddAccessList(list1, nil)
 		collection.AddAccessList(list2, nil)
@@ -209,7 +209,7 @@ func TestCollection_Validate(t *testing.T) {
 
 		collection := &Collection{
 			MembersByAccessList: make(map[string][]*accesslist.AccessListMember),
-			AccessListMap:       make(map[string]*accesslist.AccessList),
+			AccessListsByName:   make(map[string]*accesslist.AccessList),
 		}
 		collection.AddAccessList(list1, nil)
 
@@ -226,7 +226,7 @@ func TestCollection_Validate(t *testing.T) {
 
 		collection := &Collection{
 			MembersByAccessList: make(map[string][]*accesslist.AccessListMember),
-			AccessListMap:       make(map[string]*accesslist.AccessList),
+			AccessListsByName:   make(map[string]*accesslist.AccessList),
 		}
 		collection.AddAccessList(list1, []*accesslist.AccessListMember{member})
 
@@ -247,7 +247,7 @@ func TestCollection_Validate(t *testing.T) {
 
 		collection := &Collection{
 			MembersByAccessList: make(map[string][]*accesslist.AccessListMember),
-			AccessListMap:       make(map[string]*accesslist.AccessList),
+			AccessListsByName:   make(map[string]*accesslist.AccessList),
 		}
 		collection.AddAccessList(ownerList, nil)
 		collection.AddAccessList(ownedList, nil)
@@ -268,7 +268,7 @@ func TestCollection_Validate(t *testing.T) {
 
 		collection := &Collection{
 			MembersByAccessList: make(map[string][]*accesslist.AccessListMember),
-			AccessListMap:       make(map[string]*accesslist.AccessList),
+			AccessListsByName:   make(map[string]*accesslist.AccessList),
 		}
 		collection.AddAccessList(parentList, []*accesslist.AccessListMember{member})
 		collection.AddAccessList(childList, nil)
@@ -283,7 +283,7 @@ func TestCollection_Validate(t *testing.T) {
 	t.Run("validates empty collection", func(t *testing.T) {
 		collection := &Collection{
 			MembersByAccessList: make(map[string][]*accesslist.AccessListMember),
-			AccessListMap:       make(map[string]*accesslist.AccessList),
+			AccessListsByName:   make(map[string]*accesslist.AccessList),
 		}
 
 		err := collection.Validate(ctx)
@@ -306,7 +306,7 @@ func TestCollection_Validate(t *testing.T) {
 
 		collection := &Collection{
 			MembersByAccessList: make(map[string][]*accesslist.AccessListMember),
-			AccessListMap:       make(map[string]*accesslist.AccessList),
+			AccessListsByName:   make(map[string]*accesslist.AccessList),
 		}
 		collection.AddAccessList(list1, nil)
 		collection.AddAccessList(list2, []*accesslist.AccessListMember{member})
@@ -335,7 +335,7 @@ func TestCollection_Validate(t *testing.T) {
 
 		collection := &Collection{
 			MembersByAccessList: make(map[string][]*accesslist.AccessListMember),
-			AccessListMap:       make(map[string]*accesslist.AccessList),
+			AccessListsByName:   make(map[string]*accesslist.AccessList),
 		}
 		collection.AddAccessList(list1, []*accesslist.AccessListMember{member1})
 		collection.AddAccessList(list2, []*accesslist.AccessListMember{member2})
@@ -343,5 +343,122 @@ func TestCollection_Validate(t *testing.T) {
 		err := collection.Validate(ctx)
 		// circular reference should cause validation to fail
 		require.Error(t, err)
+	})
+}
+
+func TestCollection_ListAccessListMembers(t *testing.T) {
+	clock := clockwork.NewFakeClock()
+	ctx := context.Background()
+
+	t.Run("returns all members when pageSize is 0", func(t *testing.T) {
+		list1 := newAccessList(t, "list1", clock)
+		member1 := newAccessListMember(t, list1.GetName(), "user1", accesslist.MembershipKindUser, clock)
+		member2 := newAccessListMember(t, list1.GetName(), "user2", accesslist.MembershipKindUser, clock)
+		member3 := newAccessListMember(t, list1.GetName(), "user3", accesslist.MembershipKindUser, clock)
+
+		collection := &Collection{
+			MembersByAccessList: make(map[string][]*accesslist.AccessListMember),
+			AccessListsByName:   make(map[string]*accesslist.AccessList),
+		}
+		collection.AddAccessList(list1, []*accesslist.AccessListMember{member1, member2, member3})
+
+		members, nextToken, err := collection.ListAccessListMembers(ctx, list1.GetName(), 0, "")
+		require.NoError(t, err)
+		require.Empty(t, nextToken)
+		require.Len(t, members, 3)
+	})
+
+	t.Run("paginates correctly with pageSize", func(t *testing.T) {
+		list1 := newAccessList(t, "list1", clock)
+		member1 := newAccessListMember(t, list1.GetName(), "user1", accesslist.MembershipKindUser, clock)
+		member2 := newAccessListMember(t, list1.GetName(), "user2", accesslist.MembershipKindUser, clock)
+		member3 := newAccessListMember(t, list1.GetName(), "user3", accesslist.MembershipKindUser, clock)
+		member4 := newAccessListMember(t, list1.GetName(), "user4", accesslist.MembershipKindUser, clock)
+		member5 := newAccessListMember(t, list1.GetName(), "user5", accesslist.MembershipKindUser, clock)
+
+		collection := &Collection{
+			MembersByAccessList: make(map[string][]*accesslist.AccessListMember),
+			AccessListsByName:   make(map[string]*accesslist.AccessList),
+		}
+		collection.AddAccessList(list1, []*accesslist.AccessListMember{member1, member2, member3, member4, member5})
+
+		// First page
+		members, nextToken, err := collection.ListAccessListMembers(ctx, list1.GetName(), 2, "")
+		require.NoError(t, err)
+		require.NotEmpty(t, nextToken)
+		require.Len(t, members, 2)
+		require.Equal(t, "user1", members[0].GetName())
+		require.Equal(t, "user2", members[1].GetName())
+
+		// Second page
+		members, nextToken, err = collection.ListAccessListMembers(ctx, list1.GetName(), 2, nextToken)
+		require.NoError(t, err)
+		require.NotEmpty(t, nextToken)
+		require.Len(t, members, 2)
+		require.Equal(t, "user3", members[0].GetName())
+		require.Equal(t, "user4", members[1].GetName())
+
+		// Third page (last)
+		members, nextToken, err = collection.ListAccessListMembers(ctx, list1.GetName(), 2, nextToken)
+		require.NoError(t, err)
+		require.Empty(t, nextToken)
+		require.Len(t, members, 1)
+		require.Equal(t, "user5", members[0].GetName())
+	})
+
+	t.Run("returns empty when pageToken is beyond members", func(t *testing.T) {
+		list1 := newAccessList(t, "list1", clock)
+		member1 := newAccessListMember(t, list1.GetName(), "user1", accesslist.MembershipKindUser, clock)
+
+		collection := &Collection{
+			MembersByAccessList: make(map[string][]*accesslist.AccessListMember),
+			AccessListsByName:   make(map[string]*accesslist.AccessList),
+		}
+		collection.AddAccessList(list1, []*accesslist.AccessListMember{member1})
+
+		members, nextToken, err := collection.ListAccessListMembers(ctx, list1.GetName(), 10, "100")
+		require.NoError(t, err)
+		require.Empty(t, nextToken)
+		require.Empty(t, members)
+	})
+
+	t.Run("returns error for invalid pageToken", func(t *testing.T) {
+		list1 := newAccessList(t, "list1", clock)
+
+		collection := &Collection{
+			MembersByAccessList: make(map[string][]*accesslist.AccessListMember),
+			AccessListsByName:   make(map[string]*accesslist.AccessList),
+		}
+		collection.AddAccessList(list1, nil)
+
+		_, _, err := collection.ListAccessListMembers(ctx, list1.GetName(), 10, "invalid")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid page token")
+	})
+
+	t.Run("returns not found for non-existent access list", func(t *testing.T) {
+		collection := &Collection{
+			MembersByAccessList: make(map[string][]*accesslist.AccessListMember),
+			AccessListsByName:   make(map[string]*accesslist.AccessList),
+		}
+
+		_, _, err := collection.ListAccessListMembers(ctx, "non-existent", 10, "")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "not found")
+	})
+
+	t.Run("handles empty member list", func(t *testing.T) {
+		list1 := newAccessList(t, "list1", clock)
+
+		collection := &Collection{
+			MembersByAccessList: make(map[string][]*accesslist.AccessListMember),
+			AccessListsByName:   make(map[string]*accesslist.AccessList),
+		}
+		collection.AddAccessList(list1, nil)
+
+		members, nextToken, err := collection.ListAccessListMembers(ctx, list1.GetName(), 10, "")
+		require.NoError(t, err)
+		require.Empty(t, nextToken)
+		require.Empty(t, members)
 	})
 }
