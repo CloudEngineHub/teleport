@@ -30,7 +30,7 @@ import (
 // Collection represents a complete batch of access from one source (e.g. entraID or okta)
 // That implies that all access lists and members in the batch are expected to be created/updated together
 // because snapshot have a final complete state of the access lists and their members hierarchy.
-// For instance imagine an access list import from EntraID directory where  the access list
+// For instance imagine an access list import from EntraID directory where the access list
 // can't be modified outside EntraID and teleport only fetches the complete state of access lists and members from EntraID
 // This is useful to validate nested hierarchy on the fly and preset the reference updates (Status.MemberOf and Status.OwnerOf)
 // before starting the actual creation/update process in the backend.
@@ -40,12 +40,12 @@ type Collection struct {
 	// MembersByAccessList maps access list names to their members
 	MembersByAccessList map[string][]*accesslist.AccessListMember
 	// AccessListMap is an internal map for fast lookup by name
-	AccessListMap map[string]*accesslist.AccessList
+	AccessListsByName map[string]*accesslist.AccessList
 }
 
-// Validate validates all access lists and members in the batch,
+// Validate validates all access lists and members in the batch.
 func (b *Collection) Validate(ctx context.Context) error {
-	for _, accessList := range b.AccessListMap {
+	for _, accessList := range b.AccessListsByName {
 		if err := accessList.CheckAndSetDefaults(); err != nil {
 			return trace.Wrap(err)
 		}
@@ -57,7 +57,7 @@ func (b *Collection) Validate(ctx context.Context) error {
 			}
 		}
 	}
-	for _, accessList := range b.AccessListMap {
+	for _, accessList := range b.AccessListsByName {
 		members := b.MembersByAccessList[accessList.GetName()]
 		if err := ValidateAccessListWithMembers(ctx, nil, accessList, members, b); err != nil {
 			return trace.Wrap(err)
@@ -72,7 +72,7 @@ func (b *Collection) Validate(ctx context.Context) error {
 // AddAccessList adds an access list and its members to the batch.
 func (b *Collection) AddAccessList(accessList *accesslist.AccessList, members []*accesslist.AccessListMember) {
 	b.MembersByAccessList[accessList.GetName()] = members
-	b.AccessListMap[accessList.GetName()] = accessList
+	b.AccessListsByName[accessList.GetName()] = accessList
 
 	if accessList.Status.MemberOf == nil {
 		accessList.Status.MemberOf = []string{}
@@ -85,7 +85,7 @@ func (b *Collection) AddAccessList(accessList *accesslist.AccessList, members []
 // GetAccessList retrieves an access list from the batch by name.
 // Implements accesslists.AccessListAndMembersGetter interface.
 func (b *Collection) GetAccessList(ctx context.Context, name string) (*accesslist.AccessList, error) {
-	al, exists := b.AccessListMap[name]
+	al, exists := b.AccessListsByName[name]
 	if !exists {
 		return nil, trace.NotFound("access list %q not found in batch", name)
 	}
@@ -120,12 +120,12 @@ func (b *Collection) GetAccessListMember(ctx context.Context, accessListName, me
 // RefUpdates calculates and applies reference updates (Status.MemberOf and Status.OwnerOf)
 // based on the nested access list relationships in the collection.
 func (b *Collection) RefUpdates() error {
-	for name, accessList := range b.AccessListMap {
+	for name, accessList := range b.AccessListsByName {
 		for _, owner := range accessList.Spec.Owners {
 			if owner.MembershipKind != accesslist.MembershipKindList {
 				continue
 			}
-			if targetList, exists := b.AccessListMap[owner.Name]; exists {
+			if targetList, exists := b.AccessListsByName[owner.Name]; exists {
 				if slices.Contains(targetList.Status.OwnerOf, name) {
 					continue
 				}
@@ -139,7 +139,7 @@ func (b *Collection) RefUpdates() error {
 			if member.Spec.MembershipKind != accesslist.MembershipKindList {
 				continue
 			}
-			if targetList, exists := b.AccessListMap[member.Spec.Name]; exists {
+			if targetList, exists := b.AccessListsByName[member.Spec.Name]; exists {
 				if slices.Contains(targetList.Status.MemberOf, accessListName) {
 					continue
 				}
