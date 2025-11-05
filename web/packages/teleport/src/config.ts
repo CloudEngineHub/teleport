@@ -684,11 +684,17 @@ const cfg = {
   },
 
   getSsoUrl(providerUrl, providerName, redirect, loginHint) {
-    const basePath = cfg.baseUrl + generatePath(providerUrl, { redirect, providerName });
+      const basePath = cfg.baseUrl + generatePath(providerUrl, { redirect, providerName});
 
     if (loginHint) {
-      const separator = basePath.includes('?') ? '&' : '?';
-      return `${basePath}${separator}login_hint=${encodeURIComponent(loginHint)}`;
+      const url = new URL(basePath);
+      url.searchParams.set("login_hint", loginHint);
+
+      // Remove and add redirect_uri to ensure that it is the last query
+      const redirectUri = url.searchParams.get("redirect_uri")
+      url.searchParams.delete("redirect_uri")
+      url.searchParams.set("redirect_uri", redirectUri)
+      return url.toString();
     }
     return basePath;
   },
