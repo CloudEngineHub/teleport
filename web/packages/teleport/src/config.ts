@@ -683,12 +683,12 @@ const cfg = {
     return searchString ? `${path}?${searchString}` : path;
   },
 
-  getSsoUrl(providerUrl, providerName, redirect, username) {
+  getSsoUrl(providerUrl, providerName, redirect, loginHint) {
     const basePath = cfg.baseUrl + generatePath(providerUrl, { redirect, providerName });
 
-    if (username) {
+    if (loginHint) {
       const separator = basePath.includes('?') ? '&' : '?';
-      return `${basePath}${separator}username=${encodeURIComponent(username)}`;
+      return `${basePath}${separator}login_hint=${encodeURIComponent(loginHint)}`;
     }
     return basePath;
   },

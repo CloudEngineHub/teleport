@@ -40,7 +40,7 @@ import ResourceService from 'teleport/services/resources';
 import { storageService } from 'teleport/services/storageService';
 
 type Props = {
-  onLoginWithSso(provider: AuthProvider, username?: string): void;
+  onLoginWithSso(provider: AuthProvider, loginHint?: string): void;
   /**
    * onUseLocalLogin is called to switch the view to the local login form.
    */
@@ -163,7 +163,7 @@ export function FormIdentifierFirst({
             <ConnectorList
               providers={connectors}
               onLoginWithSso={onLoginWithSso}
-              username={username}
+              loginHint={username}
               onNotYou={onNotYou}
             />
           )}
@@ -230,12 +230,12 @@ function ConnectorList({
   providers,
   onLoginWithSso,
   onNotYou,
-  username,
+  loginHint,
 }: {
   providers: AuthProvider[];
-  onLoginWithSso(provider: AuthProvider, username?: string): void;
+  onLoginWithSso(provider: AuthProvider, loginHint?: string): void;
   onNotYou(): void;
-  username: string;
+  loginHint: string;
 }) {
   const $btns = providers.map((item, index) => {
     let { name, type, displayName } = item;
@@ -250,7 +250,7 @@ function ConnectorList({
         ssoType={ssoType}
         onClick={e => {
           e.preventDefault();
-          onLoginWithSso(item, username);
+          onLoginWithSso(item, loginHint);
         }}
       />
     );

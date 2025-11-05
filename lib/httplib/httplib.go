@@ -305,12 +305,17 @@ func OriginLocalRedirectURI(redirectURL string) (string, error) {
 		return "", trace.BadParameter("Invalid scheme: %s", parsedURL.Scheme)
 	}
 
+	// Make sure User field does not contain password to prevent basic auth
+	if parsedURL.User != nil {
+		_, hasPassword := parsedURL.User.Password()
+		if hasPassword {
+			return "", trace.BadParameter("Basic Auth not allowed in redirect URL")
+		}
+	}
+
 	resultURI := parsedURL.RequestURI()
-	// Basic auth is not just checking for @
 	if strings.HasPrefix(resultURI, "//") {
 		return "", trace.BadParameter("Invalid double slash redirect")
-	} else if strings.Contains(resultURI, "@") {
-		return "", trace.BadParameter("Basic Auth not allowed in redirect")
 	}
 	return resultURI, nil
 }
