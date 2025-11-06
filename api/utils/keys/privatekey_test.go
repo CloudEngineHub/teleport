@@ -38,6 +38,7 @@ import (
 
 	"github.com/gravitational/teleport/api/utils/keys"
 	"github.com/gravitational/teleport/api/utils/keys/hardwarekey"
+	"github.com/gravitational/trace"
 )
 
 func TestMarshalAndParseKey(t *testing.T) {
@@ -180,7 +181,7 @@ func TestParseCorruptedKey(t *testing.T) {
 		t.Run(tc, func(t *testing.T) {
 			b := pem.EncodeToMemory(&pem.Block{Type: tc, Bytes: []byte("foo")})
 			_, err := keys.ParsePrivateKey(b)
-			require.Error(t, err)
+			require.True(t, trace.IsNotFound(err), "wanted NotFound, got: %v", err)
 		})
 	}
 

@@ -4548,7 +4548,7 @@ func makeClientForProxy(cf *CLIConf, proxy string) (*client.TeleportClient, erro
 	profile, profileError := c.GetProfile(proxy)
 	if profileError == nil {
 		if err := tc.LoadKeyForCluster(ctx, profile.SiteName); err != nil {
-			if !client.IsRecoverableKeyRingError(err) && !trace.IsCompareFailed(err) {
+			if !trace.IsNotFound(err) && !trace.IsConnectionProblem(err) && !trace.IsCompareFailed(err) {
 				return nil, trace.Wrap(err)
 			}
 			logger.InfoContext(ctx, "Could not load key for cluster into the local agent",

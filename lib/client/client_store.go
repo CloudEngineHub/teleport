@@ -236,14 +236,6 @@ func (s *Store) AddTrustedHostKeys(proxyHost string, clusterName string, hostKey
 	return trace.Wrap(err)
 }
 
-func IsRecoverableKeyRingError(err error) bool {
-	if trace.IsNotFound(err) || trace.IsConnectionProblem(err) {
-		return true
-	}
-	var parseErr keys.PrivateKeyParseError
-	return errors.As(err, &parseErr)
-}
-
 // ReadProfileStatus returns the profile status for the given profile name.
 // If no profile name is provided, return the current profile.
 func (s *Store) ReadProfileStatus(profileName string) (*ProfileStatus, error) {
@@ -275,7 +267,7 @@ func (s *Store) ReadProfileStatus(profileName string) (*ProfileStatus, error) {
 	}
 	keyRing, err := s.GetKeyRing(idx, WithAllCerts...)
 	if err != nil {
-		if IsRecoverableKeyRingError(err) {
+		if trace.IsNotFound(err) || trace.IsConnectionProblem(err) {
 			// If we can't find a keyRing to match the profile, or can't connect to
 			// the keyRing (hardware key), return a partial status. This is used for
 			// some superficial functions `tsh logout` and `tsh status`.
