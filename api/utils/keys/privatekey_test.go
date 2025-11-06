@@ -173,25 +173,55 @@ func TestParseMismatchedPEMHeader(t *testing.T) {
 // that the preferredErr logic in Parse(Private|Public)Key returns an error for
 // each PEM type.
 func TestParseCorruptedKey(t *testing.T) {
-	for _, tc := range []string{
-		"RSA PRIVATE KEY",
-		"PRIVATE KEY",
-		"EC PRIVATE KEY",
-	} {
-		t.Run(tc, func(t *testing.T) {
-			b := pem.EncodeToMemory(&pem.Block{Type: tc, Bytes: []byte("foo")})
-			_, err := keys.ParsePrivateKey(b)
+	t.Parallel()
+	privateKeyTests := []struct {
+		name    string
+		pemData []byte
+	}{
+		{
+			name:    "PRIVATE KEY",
+			pemData: pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: []byte("foo")}),
+		},
+		{
+			name:    "RSA PRIVATE KEY",
+			pemData: pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: []byte("foo")}),
+		},
+		{
+			name:    "EC PRIVATE KEY",
+			pemData: pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: []byte("foo")}),
+		},
+		{
+			name:    "not a private key pem file",
+			pemData: []byte("foo"),
+		},
+	}
+	for _, tc := range privateKeyTests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := keys.ParsePrivateKey(tc.pemData)
 			require.True(t, trace.IsBadParameter(err), "wanted BadParameter, got: %v", err)
 		})
 	}
 
-	for _, tc := range []string{
-		"RSA PUBLIC KEY",
-		"PUBLIC KEY",
-	} {
-		t.Run(tc, func(t *testing.T) {
-			b := pem.EncodeToMemory(&pem.Block{Type: tc, Bytes: []byte("foo")})
-			_, err := keys.ParsePublicKey(b)
+	publicKeyTests := []struct {
+		name    string
+		pemData []byte
+	}{
+		{
+			name:    "RSA PUBLIC KEY",
+			pemData: pem.EncodeToMemory(&pem.Block{Type: "RSA PUBLIC KEY", Bytes: []byte("foo")}),
+		},
+		{
+			name:    "PUBLIC KEY",
+			pemData: pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: []byte("foo")}),
+		},
+		{
+			name:    "not a public key pem file",
+			pemData: []byte("foo"),
+		},
+	}
+	for _, tc := range publicKeyTests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := keys.ParsePublicKey(tc.pemData)
 			require.True(t, trace.IsBadParameter(err), "wanted BadParameter, got: %v", err)
 		})
 	}
