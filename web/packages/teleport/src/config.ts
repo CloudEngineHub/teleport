@@ -690,10 +690,11 @@ const cfg = {
       const url = new URL(basePath);
       url.searchParams.set("login_hint", loginHint);
 
-      // Remove and add redirect_uri to ensure that it is the last query
-      const redirectUri = url.searchParams.get("redirect_uri")
-      url.searchParams.delete("redirect_uri")
-      url.searchParams.set("redirect_uri", redirectUri)
+      // Remove and add redirect_url to ensure that it is the last query param
+      // See the comment in lib/web/apiserver.go:ParseSSORequestParams for details.
+      const redirectUrl = url.searchParams.get("redirect_url")
+      url.searchParams.delete("redirect_url")
+      url.searchParams.set("redirect_url", redirectUrl)
       return url.toString();
     }
     return basePath;

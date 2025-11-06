@@ -305,12 +305,9 @@ func OriginLocalRedirectURI(redirectURL string) (string, error) {
 		return "", trace.BadParameter("Invalid scheme: %s", parsedURL.Scheme)
 	}
 
-	// Make sure User field does not contain password to prevent basic auth
+	// Make sure User field does not exist to prevent basic auth
 	if parsedURL.User != nil {
-		_, hasPassword := parsedURL.User.Password()
-		if hasPassword {
-			return "", trace.BadParameter("Basic Auth not allowed in redirect URL")
-		}
+		return "", trace.BadParameter("Basic Auth not allowed in redirect URL")
 	}
 
 	resultURI := parsedURL.RequestURI()
