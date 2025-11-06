@@ -684,18 +684,26 @@ const cfg = {
   },
 
   getSsoUrl(providerUrl, providerName, redirect, loginHint) {
-      const basePath = cfg.baseUrl + generatePath(providerUrl, { redirect, providerName});
+    const basePath = cfg.baseUrl + generatePath(providerUrl, { redirect, providerName});
 
     if (loginHint) {
-      const url = new URL(basePath);
-      url.searchParams.set("login_hint", loginHint);
-
       // Remove and add redirect_url to ensure that it is the last query param
       // See the comment in lib/web/apiserver.go:ParseSSORequestParams for details.
-      const redirectUrl = url.searchParams.get("redirect_url")
-      url.searchParams.delete("redirect_url")
-      url.searchParams.set("redirect_url", redirectUrl)
-      return url.toString();
+      const splitUrl = basePath.split("&redirect_url=");
+      let newBasePath = basePath;
+      let redirectUrl = "";
+      if (splitUrl.length > 1) {
+        newBasePath = splitUrl[0];
+        redirectUrl = splitUrl[1];
+      }
+      const url = new URL(newBasePath);
+      url.searchParams.set("login_hint", loginHint);
+
+      if (redirectUrl) {
+          const decodedRedirectUrl = decodeURIComponent(redirectUrl);
+          url.searchParams.set("redirect_url", decodedRedirectUrl);
+      }
+      return url.toString()
     }
     return basePath;
   },
