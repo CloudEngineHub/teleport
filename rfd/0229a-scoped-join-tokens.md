@@ -3,7 +3,7 @@ authors: Erik Tate (erik.tate@goteleport.com)
 state: draft
 ---
 
-# RFD XXXX - Scoped Join Tokens
+# RFD 0229a - Scoped Join Tokens
 
 ## Required approvers
 
@@ -17,7 +17,7 @@ automatically applies a scope and labels to provisioned resources.
 
 ## Why
 
-The introduction of scoped access, as defined in the [Scopes RFD](./XXXX-scopes.md),
+The introduction of scoped access, as defined in the [Scopes RFD](./0229-scopes.md),
 requires that resources are assigned a scope at provisioning time, which
 implies some kind of extension to our provisioning capabilities. Scopes also
 introduce an entirely new access control paradigm to Teleport. Due to the
@@ -43,9 +43,8 @@ The scope of work proposed by this RFD is:
 - Support for configuring an `assigned_scope` on a scoped token which will
   in turn be assigned to new resources at provisioning time
 - Support for configuring a scoped token with a set of labels that are
-  automatically assigned to a resource at provisioning time
-- Support for defining a maximum number of resources a scoped token can
-  provision
+  automatically assigned to SSH nodes at provisioning time
+- Support for defining a maximum number of uses a scoped token can support
 - New `scoped` variants of the `tctl tokens *` family of sub commands
 
 Considered out of scope for this RFD:
@@ -54,7 +53,7 @@ Considered out of scope for this RFD:
   These will almost certainly be implemented in the future but are not part
   of the immediately planned work.
 
-### Scoped Tokens
+### Scoped tokens
 
 The recently added `ScopedToken` resource will be modified to include fields
 necessary for assigning scopes, labels, and enforcing limited uses.
@@ -62,24 +61,15 @@ Additionally, fields missing from the existing `types.ProvisionTokenV2` will be
 ported over to facilitate existing provisioning semantics.
 
 ```diff
+index ed3f43847c..83bf1ab28a 100644
 --- a/api/proto/teleport/scopes/joining/v1/token.proto
 +++ b/api/proto/teleport/scopes/joining/v1/token.proto
-@@ -16,7 +16,9 @@ syntax = "proto3";
-
- package teleport.scopes.joining.v1;
-
-+import "google/protobuf/timestamp.proto";
- import "teleport/header/v1/metadata.proto";
-+import "teleport/legacy/types/types.proto";
-
- option go_package = "github.com/gravitational/teleport/api/gen/proto/go/teleport/scopes/joining/v1;joiningv1";
-
-@@ -46,8 +48,28 @@ message ScopedToken {
+@@ -46,8 +46,24 @@ message ScopedToken {
 
  // ScopedTokenSpec is the specification of a scoped token.
  message ScopedTokenSpec {
 -  // AssignedScope is the scope to which this token is assigned.
-+  // The scope to which resources provisioned using this token are assigned.
++  // The scope to which this token is assigned.
    string assigned_scope = 1;
 
 -  // TODO(fspmarshall): port relevant token features to scoped tokens.
@@ -92,18 +82,14 @@ ported over to facilitate existing provisioning semantics.
 +  // Supported joining methods for scoped tokens only include 'token'.
 +  string join_method = 3;
 +
-+  // The list of rules applied to resources using this token.
-+  // At least one rule must match the resource in order to join.
-+  repeated types.TokenRule allow = 4;
-+
-+  // The set of labels to be automatically assigned to any provisioned resource.
-+  map<string, string> assigned_labels = 5;
++  // The set of labels to be automatically assigned to any provisioned SSH node.
++  map<string, string> ssh_labels = 4;
 +
 +  // The number of resources that can be provisioned using this token.
-+  int32 max_uses = 6;
++  int32 max_uses = 5;
 +
-+  // The number of resources that have been provisioned using this token.
-+  int32 total_uses = 6;
++  // The number of successful provisioning attempts made using this token.
++  int32 attempted_uses = 6;
  }
 ```
 
@@ -112,49 +98,65 @@ ported over to facilitate existing provisioning semantics.
 Scoped resources will be provisioned by extending the existing `Join` RPC to
 support scoped tokens. When the join method is `token` the auth server will
 query both the existing `ProvisionTokenV2` and the new `ScopedToken` resources
-using the provided token name. If a `ScopedToken` is found then it will take
-precedence over any `ProvisionTokenV2` that might share the same name. This
-approach allows for backwards compatible provisioning where agents can be
-scoped without any knowledge of scopes themselves. The `assigned_scope` of the
-`ScopedToken` will be assigned as the scope of the resulting resource. It will
-also be attached as metadata to the resulting host certificate under the
-`AgentScope` field so that scope related access controls can be performed
-against the agent's identity rather than just restricting clients' access to
-the agent itself.
+using the provided token name. Conflicting token names between scoped and
+unscoped tokens will result in an error and it will be up to the administrator
+to resolve the ambiguity. Either by deleting one of the conflicting tokens or
+creating a new token with a different name. This approach allows for backwards
+compatible provisioning where agents can be scoped without any knowledge of
+scopes themselves. The `assigned_scope` of the `ScopedToken` will be assigned
+as the scope of the resulting resource. It will also be attached as metadata to
+the resulting host certificate under the `AgentScope` field so that scope
+related access controls can be performed against the agent's identity rather
+than just restricting clients' access to the agent itself.
 
-### Automatic Labels
+### Automatic labels for SSH nodes
 
-Similar to assigning the provisioned resource scope from the `ScopedToken`
-used, the same token's `assigned_labels` field will be applied to the resulting
-resource directly after provisioning. Because static labels exist exclusively
-as configuration within the agent's `teleport.yaml` file, scoped token
-provisioning will use the `server_info` resource to apply
-[resource-based labels](https://goteleport.com/docs/zero-trust-access/rbac-get-started/labels/#apply-resource-based-labels)
-upon creation. This applies labels at runtime using the inventory control
-stream and does not require any new resources or RPCs. Labels will be created
-at the end of [Join()](https://) before returning the host certificate for a
-successfully provisioned resource.
+Scoped tokens should also support automatic assignment of labels to any SSH
+node provisioned. This document only proposes support for SSH nodes as solving
+for all scoped node types introduces more significant complexity. The
+`ssh_labels` field of a `ScopedToken` will be added encoded into the resulting
+host certificate in much the same way as the `assigned_scope`. These labels
+will be extracted while registering the inventory control stream and applied as
+a new `token_labels` field stored in `ServerSpecV2`. Future heartbeats will
+verify `token_labels` just as they do for static labels and command labels.
 
-### Limited Use Tokens
+Merging token-assigned labels with static labels was also considered as a way
+to more easily integrate with existing flows surrounding labels, but ultimately
+decided against. Adding a new set of labels eliminates any ambiguity around
+conflict resolution and allows for future security controls that select on
+labels that cannot be maliciously escape.
+
+In order to prevent inflating the weight of the resulting host certificates,
+the `token_labels` will initially be limited to a total size of 2kb. This limit
+will only be enforced when generating the host certificates in order to allow
+future adjustments to sizing without requiring agent upgrades.
+
+### Limited use tokens
 
 The simplest way to implement token usage limits is to keep a counter of
-successful uses and fallback on the conditional update system to maintain
-consistency. Whenever a resource is provisioned using a token, we increment the
-token's `total_uses` field with a conditional update. If the `total_uses`
-reaches the `max_uses`, the token will no longer be usable and should
-eventually be cleaned up. This is simple to reason about but requires that the
-final decision about whether or not the token can be used has to be deferred to
-the end of the provisioning process. Otherwise it would be possible for many
-concurrent join attempts to exceed the allowed `max_uses` for a token.
+successful provisioning attempts and fallback on the conditional update system
+to maintain consistency. A "successful provisioning attempt" means that the
+auth service generated host certificates, but it does not guarantee that the
+resource successfully joined the cluster. Whenever a resource is provisioned
+using a token, we increment the token's `attempted_uses` field with a
+conditional update. If the `attempted_uses` reaches the `max_uses`, the token
+will no longer be usable and should eventually be cleaned up. This is simple to
+reason about but requires that the final decision about whether or not the
+token can be used has to be deferred to the end of the provisioning process.
+Otherwise it would be possible for many concurrent join attempts to exceed the
+allowed `max_uses` for a token.
 
-To reduce the throughput to the backend, each auth server would queue attempts
-to update the token and flush them as a single update on a set interval. The
-interval would need to be a relatively short as it would increase provisioning
-time by the interval itself in the worst case. This way writes could be batched
-per auth server per interval instead of per provisioning attempt.
-
-Configuring a token with a `max_uses` of `0` would effectively disable usage
+Configuring a token without defining `max_uses` would effectively disable usage
 limits and fallback to the typical expiration behavior tokens have today.
+Tokens that have exceeded their usage limits will remain in the backend, but
+will not be usable. This would allow the posibility of extending `max_uses` to
+effectively reenable a token that has been used up.
+
+Individual auth service instances should guard incrementing the
+`attempted_uses` field using a mutex in order to prevent excessive retries
+within a single server due to conditional update failures. This will not
+prevent conditional update failures from occurring across multiple auth service
+instances.
 
 ### `tctl` subcommands
 
@@ -173,7 +175,7 @@ part of this RFD.
 ```bash
 # adding a scoped token that will assign provisioned resources to the
 # /staging/west scope
-$ tctl scoped tokens add --type=node --scope=/staging/west
+$ tctl scoped tokens add --type=node --scope=/staging/west--assign-scope=/staging/west
 ```
 
 ```bash
@@ -181,9 +183,11 @@ $ tctl scoped tokens add --type=node --scope=/staging/west
 # /staging/west scope, automatically assign labels, and limit provisioned
 # resources to 5
 $ tctl scoped tokens add \
-  --type node \
-  --scope /staging/west \
-  --labels env=staging,hello=world \
+  --type=node \
+  --scope=/staging/west \
+  --assign-scope=/staging/west \
+  # ssh_labels follows the same format as the common --labels flag
+  --ssh-labels=env=staging,hello=world \
   --max-uses 5
 ```
 
@@ -193,10 +197,10 @@ $ tctl scoped tokens rm <token-name>
 ```
 
 ```bash
-# List all scoped tokens assigning provisioned resources to descendants of the
-# target scope /staging (e.g. tokens assigning /staging/west and /staging/east
-# will all be returned). Descendant matches are also the default behavior when
-# filtering on scope
+# List all scoped tokens assigning provisioned resources to scopes subject to
+# the target scope /staging (e.g. tokens assigning /staging/west and
+# /staging/east will all be returned). Descendant matches are also the default
+# behavior when filtering on scope
 $ tctl scoped tokens ls --scope=/staging
 ```
 
@@ -222,15 +226,25 @@ Modification of the scope assigned to a resource will not be permitted
 initially. Reprovisioning the resource using a new scoped token configured with
 the correct scope will be the only way to "move" a resource into another scope.
 
+## Security considerations
+
+Scoped tokens themselves will make use of scoped access controls. Meaning that
+a scoped identity must have a scoped role assignment permitting the given
+action taken against a scoped token resource.
+
+Similar to scoped roles and scoped role assignments themselves, scoped tokens
+should still be accessible to unscoped identities using the `editor` role.
+
 # Test plan
 
 - Scoped tokens can be created using `tctl scoped tokens add`
 - Scoped tokens can be removed using `tctl scoped tokens rm`
-- Scoped tokens can be filtered by `assigned_scope` using
-  `tctl scoped tokens ls --scope <scope>`
-- Resource joining with a scoped token are:
+- Scoped tokens can be listed using `tctl scoped tokens ls`
+- Above commands are scope aware. Meaning adding or removing a token only
+  succeed within accessible scopes and listing tokens only includes tokens
+  from accessible scopes.
+- SSH nodes joining with a scoped token are:
   - Assigned the correct scope
-  - Assigned the token's `assigned_labels` as dynamic resource labels
-  - Assigned a certificate containing their assigned scope
-- Scoped tokens are automatically removed after provisioning `--max-uses`
-  resources
+  - Assigned the token's `ssh_labels`
+  - Assigned a certificate containing their assigned scope and token labels
+- Scoped tokens are nout usable after their `--max-uses` limit has been reached
