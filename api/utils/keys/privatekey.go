@@ -27,6 +27,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"os"
 
 	"github.com/gravitational/trace"
@@ -274,6 +275,22 @@ func WithContextualKeyInfo(info hardwarekey.ContextualKeyInfo) ParsePrivateKeyOp
 	}
 }
 
+type PrivateKeyParseError struct {
+	err error
+}
+
+func (e PrivateKeyParseError) Error() string {
+	return fmt.Sprintf("error parsing private key: %v", e.err)
+}
+
+func (e PrivateKeyParseError) Unwrap() error {
+	return e.err
+}
+
+func newPrivateKeyParseError(message string, args ...any) PrivateKeyParseError {
+	return PrivateKeyParseError{err: trace.BadParameter(message, args...)}
+}
+
 // ParsePrivateKey returns the PrivateKey for the given key PEM block.
 // Allows passing a custom hardware key prompt.
 func ParsePrivateKey(keyPEM []byte, opts ...ParsePrivateKeyOpt) (*PrivateKey, error) {
@@ -284,7 +301,7 @@ func ParsePrivateKey(keyPEM []byte, opts ...ParsePrivateKeyOpt) (*PrivateKey, er
 
 	block, _ := pem.Decode(keyPEM)
 	if block == nil {
-		return nil, trace.BadParameter("expected PEM encoded private key")
+		return nil, newPrivateKeyParseError("expected PEM encoded private key")
 	}
 
 	switch block.Type {

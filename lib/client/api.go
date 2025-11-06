@@ -855,6 +855,10 @@ func IsErrorResolvableWithRelogin(err error) bool {
 		return true
 	}
 
+	if errors.As(err, &keys.PrivateKeyParseError{}) {
+		return true
+	}
+
 	// Ignore any failures resulting from RPCs.
 	// These were all materialized as status.Error here before
 	// https://github.com/gravitational/teleport/pull/30578.
