@@ -62,8 +62,6 @@ type GetKubeServersWithFilterFunc = func(ctx context.Context, filter func(readon
 
 // PassiveForwarderConfig contains the parameters for [NewPassiveForwarder].
 type PassiveForwarderConfig struct {
-	_ struct{}
-
 	Log *slog.Logger
 
 	ClusterName string
@@ -110,7 +108,7 @@ func NewPassiveForwarder(cfg PassiveForwarderConfig) (*PassiveForwarder, error) 
 	}
 
 	// This context is owned by PassiveForwarder and it's used for operations
-	// that get synchronously canceled by Close. It is not
+	// that get synchronously canceled by Close.
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &PassiveForwarder{

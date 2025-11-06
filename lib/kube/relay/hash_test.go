@@ -64,7 +64,6 @@ func TestHashForTarget(t *testing.T) {
 	for _, tc := range testCases {
 		hft := hashForTarget(tc.teleportClusterName, tc.kubeClusterName)
 		require.Equal(t, tc.hash, string(hft[:]))
-		// require.Equal(t, tc.hashHex, hex.EncodeToString(hft[:]))
 		require.Equal(t, tc.sniLabelForKubeCluster, SNILabelForKubeCluster(tc.teleportClusterName, tc.kubeClusterName))
 	}
 }

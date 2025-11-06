@@ -48,7 +48,7 @@ type SNIDispatchTransportCredentials struct {
 
 var _ credentials.TransportCredentials = (*SNIDispatchTransportCredentials)(nil)
 
-// Clone implements implements [credentials.TransportCredentials].
+// Clone implements [credentials.TransportCredentials].
 func (s *SNIDispatchTransportCredentials) Clone() credentials.TransportCredentials {
 	return &SNIDispatchTransportCredentials{
 		TransportCredentials: s.TransportCredentials.Clone(),
@@ -56,7 +56,7 @@ func (s *SNIDispatchTransportCredentials) Clone() credentials.TransportCredentia
 	}
 }
 
-// ServerHandshake implements implements [credentials.TransportCredentials].
+// ServerHandshake implements [credentials.TransportCredentials].
 func (s *SNIDispatchTransportCredentials) ServerHandshake(rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
 	// the deadline for rawConn was set by the grpc server machinery based on
 	// the server connection timeout, we should not apply additional timeouts
