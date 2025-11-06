@@ -181,7 +181,7 @@ func TestParseCorruptedKey(t *testing.T) {
 		t.Run(tc, func(t *testing.T) {
 			b := pem.EncodeToMemory(&pem.Block{Type: tc, Bytes: []byte("foo")})
 			_, err := keys.ParsePrivateKey(b)
-			require.True(t, trace.IsNotFound(err), "wanted NotFound, got: %v", err)
+			require.True(t, trace.IsBadParameter(err), "wanted BadParameter, got: %v", err)
 		})
 	}
 
@@ -192,7 +192,7 @@ func TestParseCorruptedKey(t *testing.T) {
 		t.Run(tc, func(t *testing.T) {
 			b := pem.EncodeToMemory(&pem.Block{Type: tc, Bytes: []byte("foo")})
 			_, err := keys.ParsePublicKey(b)
-			require.Error(t, err)
+			require.True(t, trace.IsBadParameter(err), "wanted BadParameter, got: %v", err)
 		})
 	}
 }
