@@ -121,7 +121,12 @@ export default function useLogin() {
     attemptActions.start();
     storageService.clearLoginTime();
     const appStartRoute = getEntryRoute();
-    const ssoUri = cfg.getSsoUrl(provider.url, provider.name, appStartRoute, loginHint);
+    const ssoUri = cfg.getSsoUrl(
+      provider.url,
+      provider.name,
+      appStartRoute,
+      loginHint
+    );
     history.push(ssoUri, true);
   }
 
