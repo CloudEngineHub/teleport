@@ -21,6 +21,7 @@ import (
 	"context"
 	"log/slog"
 	"net"
+	"os"
 	"testing"
 
 	"github.com/gravitational/trace"
@@ -28,8 +29,13 @@ import (
 
 	apitypes "github.com/gravitational/teleport/api/types"
 	"github.com/gravitational/teleport/lib/services/readonly"
-	logutils "github.com/gravitational/teleport/lib/utils/log"
+	"github.com/gravitational/teleport/lib/utils/log/logtest"
 )
+
+func TestMain(m *testing.M) {
+	logtest.InitLogger(testing.Verbose)
+	os.Exit(m.Run())
+}
 
 func TestPassiveForwarder_Selection(t *testing.T) {
 	kubeServers := []*apitypes.KubernetesServerV3{
@@ -93,16 +99,9 @@ func TestPassiveForwarder_Selection(t *testing.T) {
 		},
 	}
 
-	l := slog.New(logutils.NewSlogJSONHandler(
-		t.Output(),
-		logutils.SlogJSONHandlerConfig{
-			Level: slog.LevelDebug,
-		},
-	))
-
 	var localDialed []string
 	fwd, err := NewPassiveForwarder(PassiveForwarderConfig{
-		Log:         l,
+		Log:         slog.Default(),
 		ClusterName: "clustername",
 		GroupName:   "thisgroup",
 		GetKubeServersWithFilter: func(ctx context.Context, filter func(readonly.KubeServer) bool) ([]apitypes.KubeServer, error) {
