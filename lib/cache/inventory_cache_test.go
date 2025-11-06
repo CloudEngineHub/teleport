@@ -665,3 +665,282 @@ func (m *mockBotInstanceCache) GetBotInstancesCount(ctx context.Context, botName
 func (m *mockBotInstanceCache) SubmitHeartbeat(ctx context.Context, heartbeat *machineidv1.SubmitHeartbeatRequest) (*machineidv1.SubmitHeartbeatResponse, error) {
 	return nil, nil
 }
+
+// TestInventoryCacheFiltering tests the filtering for the inventory cache.
+func TestInventoryCacheFiltering(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := t.Context()
+
+		bk, err := memory.New(memory.Config{
+			Context: ctx,
+		})
+		require.NoError(t, err)
+		defer bk.Close()
+
+		p := newTestPack(t, ForAuth)
+		defer p.Close()
+
+		instances := []*types.InstanceV1{
+			{
+				ResourceHeader: types.ResourceHeader{
+					Metadata: types.Metadata{
+						Name: "node1",
+					},
+				},
+				Spec: types.InstanceSpecV1{
+					Hostname:         "node1.example.com",
+					Version:          "18.1.0",
+					Services:         []types.SystemRole{types.RoleNode},
+					UpdaterInfo:      &types.UpdaterV2Info{UpdateGroup: "group1"},
+					ExternalUpgrader: "kube",
+				},
+			},
+			{
+				ResourceHeader: types.ResourceHeader{
+					Metadata: types.Metadata{
+						Name: "node2",
+					},
+				},
+				Spec: types.InstanceSpecV1{
+					Hostname:         "node2.example.com",
+					Version:          "18.2.0",
+					Services:         []types.SystemRole{types.RoleNode, types.RoleProxy},
+					UpdaterInfo:      &types.UpdaterV2Info{UpdateGroup: "group1"},
+					ExternalUpgrader: "unit",
+				},
+			},
+			{
+				ResourceHeader: types.ResourceHeader{
+					Metadata: types.Metadata{
+						Name: "auth1",
+					},
+				},
+				Spec: types.InstanceSpecV1{
+					Hostname:         "auth1.example.com",
+					Version:          "19.0.0",
+					Services:         []types.SystemRole{types.RoleAuth},
+					UpdaterInfo:      &types.UpdaterV2Info{UpdateGroup: "group2"},
+					ExternalUpgrader: "kube",
+				},
+			},
+		}
+
+		bots := []*machineidv1.BotInstance{
+			{
+				Kind:    types.KindBotInstance,
+				Version: types.V1,
+				Metadata: &headerv1.Metadata{
+					Name: "bot1-instance1",
+				},
+				Spec: &machineidv1.BotInstanceSpec{
+					BotName:    "bot1",
+					InstanceId: "instance1",
+				},
+				Status: &machineidv1.BotInstanceStatus{
+					LatestHeartbeats: []*machineidv1.BotInstanceStatusHeartbeat{
+						{
+							RecordedAt:      timestamppb.Now(),
+							Version:         "18.1.5",
+							Hostname:        "bot-host1.example.com",
+							ExternalUpdater: "kube",
+							UpdaterInfo:     &types.UpdaterV2Info{UpdateGroup: "bot-group1"},
+						},
+					},
+				},
+			},
+			{
+				Kind:    types.KindBotInstance,
+				Version: types.V1,
+				Metadata: &headerv1.Metadata{
+					Name: "bot2-instance2",
+				},
+				Spec: &machineidv1.BotInstanceSpec{
+					BotName:    "bot2",
+					InstanceId: "instance2",
+				},
+				Status: &machineidv1.BotInstanceStatus{
+					LatestHeartbeats: []*machineidv1.BotInstanceStatusHeartbeat{
+						{
+							RecordedAt:      timestamppb.Now(),
+							Version:         "19.0.1",
+							Hostname:        "bot-host2.example.com",
+							ExternalUpdater: "unit",
+							UpdaterInfo:     &types.UpdaterV2Info{UpdateGroup: "bot-group2"},
+						},
+					},
+				},
+			},
+		}
+
+		mockInventory := &mockInventoryService{instances: instances}
+		mockBotCache := &mockBotInstanceCache{bots: bots}
+
+		inventoryCache, err := NewInventoryCache(InventoryCacheConfig{
+			PrimaryCache:     p.cache,
+			Backend:          bk,
+			Inventory:        mockInventory,
+			BotInstanceCache: mockBotCache,
+			TargetVersion:    "19.0.0",
+		})
+		require.NoError(t, err)
+		defer inventoryCache.Close()
+
+		time.Sleep(time.Second)
+		synctest.Wait()
+		require.True(t, inventoryCache.IsHealthy())
+
+		// Test searching by hostname
+		resp, err := inventoryCache.ListUnifiedInstances(ctx, &inventoryv1.ListUnifiedInstancesRequest{
+			PageSize: 100,
+			Filter: &inventoryv1.ListUnifiedInstancesFilter{
+				Search: "node1",
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Items, 1)
+		require.Equal(t, "node1.example.com", resp.Items[0].GetInstance().Spec.Hostname)
+
+		// Test searching by bot name
+		resp, err = inventoryCache.ListUnifiedInstances(ctx, &inventoryv1.ListUnifiedInstancesRequest{
+			PageSize: 100,
+			Filter: &inventoryv1.ListUnifiedInstancesFilter{
+				Search:        "bot2",
+				InstanceTypes: []string{types.KindBotInstance},
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Items, 1)
+		require.Equal(t, "bot2", resp.Items[0].GetBotInstance().Spec.BotName)
+
+		// Test filtering by services
+		resp, err = inventoryCache.ListUnifiedInstances(ctx, &inventoryv1.ListUnifiedInstancesRequest{
+			PageSize: 100,
+			Filter: &inventoryv1.ListUnifiedInstancesFilter{
+				Services:      []string{string(types.RoleAuth), string(types.RoleProxy)},
+				InstanceTypes: []string{types.KindInstance},
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Items, 2)
+		require.Equal(t, "auth1.example.com", resp.Items[0].GetInstance().Spec.Hostname)
+		require.Equal(t, "node2.example.com", resp.Items[1].GetInstance().Spec.Hostname)
+
+		// Test filtering by updater groups
+		resp, err = inventoryCache.ListUnifiedInstances(ctx, &inventoryv1.ListUnifiedInstancesRequest{
+			PageSize: 100,
+			Filter: &inventoryv1.ListUnifiedInstancesFilter{
+				UpdaterGroups: []string{"group1"},
+				InstanceTypes: []string{types.KindInstance},
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Items, 2)
+
+		// Test filtering by external upgraders
+		resp, err = inventoryCache.ListUnifiedInstances(ctx, &inventoryv1.ListUnifiedInstancesRequest{
+			PageSize: 100,
+			Filter: &inventoryv1.ListUnifiedInstancesFilter{
+				Upgraders:     []string{"kube"},
+				InstanceTypes: []string{types.KindInstance},
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Items, 2)
+		for _, item := range resp.Items {
+			require.Equal(t, "kube", item.GetInstance().Spec.ExternalUpgrader)
+		}
+
+		// Test predicate query filtering by version (less than)
+		resp, err = inventoryCache.ListUnifiedInstances(ctx, &inventoryv1.ListUnifiedInstancesRequest{
+			PageSize: 100,
+			Filter: &inventoryv1.ListUnifiedInstancesFilter{
+				SearchKeywords: `older_than(status.latest_heartbeat.version, "18.2.0")`,
+				InstanceTypes:  []string{types.KindInstance},
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Items, 1)
+		require.Equal(t, "18.1.0", resp.Items[0].GetInstance().Spec.Version)
+
+		// Test predicate query filtering by version (greater than) for both instance types.
+		// This should return 2 instances and 1 bot instance.
+		resp, err = inventoryCache.ListUnifiedInstances(ctx, &inventoryv1.ListUnifiedInstancesRequest{
+			PageSize: 100,
+			Filter: &inventoryv1.ListUnifiedInstancesFilter{
+				SearchKeywords: `newer_than(status.latest_heartbeat.version, "18.1.6")`,
+				InstanceTypes:  []string{},
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Items, 3)
+
+		// Test predicate query filtering by version (between)
+		resp, err = inventoryCache.ListUnifiedInstances(ctx, &inventoryv1.ListUnifiedInstancesRequest{
+			PageSize: 100,
+			Filter: &inventoryv1.ListUnifiedInstancesFilter{
+				SearchKeywords: `between(status.latest_heartbeat.version, "18.0.0", "19.0.0")`,
+				InstanceTypes:  []string{types.KindInstance},
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Items, 2)
+
+		// Test predicate query filtering by hostname
+		resp, err = inventoryCache.ListUnifiedInstances(ctx, &inventoryv1.ListUnifiedInstancesRequest{
+			PageSize: 100,
+			Filter: &inventoryv1.ListUnifiedInstancesFilter{
+				SearchKeywords: `hostname == "node2.example.com"`,
+				InstanceTypes:  []string{types.KindInstance},
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Items, 1)
+		require.Equal(t, "node2.example.com", resp.Items[0].GetInstance().Spec.Hostname)
+
+		// Test filtering with multiple filters.
+		resp, err = inventoryCache.ListUnifiedInstances(ctx, &inventoryv1.ListUnifiedInstancesRequest{
+			PageSize: 100,
+			Filter: &inventoryv1.ListUnifiedInstancesFilter{
+				Services:       []string{string(types.RoleNode)},
+				UpdaterGroups:  []string{"group1"},
+				SearchKeywords: `older_than(status.latest_heartbeat.version, "18.2.0")`,
+				InstanceTypes:  []string{types.KindInstance},
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Items, 1)
+		require.Equal(t, "node1.example.com", resp.Items[0].GetInstance().Spec.Hostname)
+
+		// Test filtering bot instances by updater group
+		resp, err = inventoryCache.ListUnifiedInstances(ctx, &inventoryv1.ListUnifiedInstancesRequest{
+			PageSize: 100,
+			Filter: &inventoryv1.ListUnifiedInstancesFilter{
+				UpdaterGroups: []string{"bot-group1"},
+				InstanceTypes: []string{types.KindBotInstance},
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Items, 1)
+		require.Equal(t, "bot1", resp.Items[0].GetBotInstance().Spec.BotName)
+
+		// Test filtering both instances and bot instances by upgrader
+		resp, err = inventoryCache.ListUnifiedInstances(ctx, &inventoryv1.ListUnifiedInstancesRequest{
+			PageSize: 100,
+			Filter: &inventoryv1.ListUnifiedInstancesFilter{
+				Upgraders: []string{"kube"},
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Items, 3)
+		upgraders := make(map[string]bool)
+		for _, item := range resp.Items {
+			if item.GetInstance() != nil {
+				upgraders[item.GetInstance().Spec.ExternalUpgrader] = true
+			} else if item.GetBotInstance() != nil && len(item.GetBotInstance().Status.LatestHeartbeats) > 0 {
+				upgraders[item.GetBotInstance().Status.LatestHeartbeats[0].ExternalUpdater] = true
+			}
+		}
+		require.True(t, upgraders["kube"])
+		require.Len(t, upgraders, 1)
+	})
+}
