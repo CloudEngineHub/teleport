@@ -82,83 +82,8 @@ const meta: Meta<StoryProps> = {
 export default meta;
 
 export function ResourceSection(props: StoryProps) {
-  const kind = props.resourceKind;
-  let component;
-  let defaultValue;
-  let showInputFields;
-  switch (kind) {
-    case 'app':
-      component = AppAccessSection;
-      defaultValue = newResourceAccess('app', defaultRoleVersion);
-      if (props.hideSomeInputFields) {
-        showInputFields = {
-          labels: true,
-          azureIdentities: true,
-        } as AppAccessInputFields;
-      }
-      break;
-    case 'db':
-      component = DatabaseAccessSection;
-      defaultValue = newResourceAccess('db', defaultRoleVersion);
-      if (props.hideSomeInputFields) {
-        showInputFields = {
-          labels: true,
-          names: true,
-        } as DatabaseAccessInputFields;
-      }
-      break;
-    case 'git_server':
-      component = GitHubOrganizationAccessSection;
-      defaultValue = newResourceAccess('git_server', defaultRoleVersion);
-      if (props.hideSomeInputFields) {
-        showInputFields = {
-          organizations: false,
-        } as GitHubOrganizationAccessInputFields;
-      }
-      break;
-    case 'kube_cluster':
-      component = KubernetesAccessSection;
-      defaultValue = {
-        ...newResourceAccess('kube_cluster', defaultRoleVersion),
-        resources: [
-          {
-            id: '12',
-            kind: [{ value: 'hello', label: 'hello' }],
-            name: 'kube',
-            namespace: 'namespace',
-            verbs: [{ value: 'read', label: 'read' }],
-            roleVersion: defaultRoleVersion,
-          },
-        ],
-      };
-      if (props.hideSomeInputFields) {
-        showInputFields = {
-          labels: true,
-          users: true,
-        } as KubernetesAccessInputFields;
-      }
-      break;
-    case 'node':
-      component = ServerAccessSection;
-      defaultValue = newResourceAccess('node', defaultRoleVersion);
-      if (props.hideSomeInputFields) {
-        showInputFields = {
-          labels: true,
-        } as ServerAccessInputFields;
-      }
-      break;
-    case 'windows_desktop':
-      component = WindowsDesktopAccessSection;
-      defaultValue = newResourceAccess('windows_desktop', defaultRoleVersion);
-      if (props.hideSomeInputFields) {
-        showInputFields = {
-          labels: true,
-        } as WindowsDesktopAccessInputFields;
-      }
-      break;
-    default:
-      kind satisfies never;
-  }
+  const { component, defaultValue, visibleInputFields } =
+    getResourceSectionStates(props.resourceKind, props.hideSomeInputFields);
 
   return (
     <Box
@@ -174,10 +99,101 @@ export function ResourceSection(props: StoryProps) {
         onChange={() => null}
         validatorRef={() => null}
         validate={validateResourceAccess}
-        showInputFields={showInputFields}
+        visibleInputFields={visibleInputFields}
         readOnly={props.readOnly}
         key={crypto.randomUUID()}
       />
     </Box>
   );
+}
+
+function getResourceSectionStates(
+  kind: ResourceAccessKind,
+  hideSomeInputFields: boolean
+) {
+  switch (kind) {
+    case 'app':
+      return {
+        component: AppAccessSection,
+        defaultValue: newResourceAccess('app', defaultRoleVersion),
+        visibleInputFields: hideSomeInputFields
+          ? ({
+              labels: true,
+              azureIdentities: true,
+            } as AppAccessInputFields)
+          : undefined,
+      };
+
+    case 'db':
+      return {
+        component: DatabaseAccessSection,
+        defaultValue: newResourceAccess('db', defaultRoleVersion),
+        visibleInputFields: hideSomeInputFields
+          ? ({
+              labels: true,
+              names: true,
+            } as DatabaseAccessInputFields)
+          : undefined,
+      };
+
+    case 'git_server':
+      return {
+        component: GitHubOrganizationAccessSection,
+        defaultValue: newResourceAccess('git_server', defaultRoleVersion),
+        visibleInputFields: hideSomeInputFields
+          ? ({
+              organizations: false,
+            } as GitHubOrganizationAccessInputFields)
+          : undefined,
+      };
+
+    case 'kube_cluster':
+      return {
+        component: KubernetesAccessSection,
+        defaultValue: {
+          ...newResourceAccess('kube_cluster', defaultRoleVersion),
+          resources: [
+            {
+              id: '12',
+              kind: [{ value: 'hello', label: 'hello' }],
+              name: 'kube',
+              namespace: 'namespace',
+              verbs: [{ value: 'read', label: 'read' }],
+              roleVersion: defaultRoleVersion,
+            },
+          ],
+        },
+        visibleInputFields: hideSomeInputFields
+          ? ({
+              labels: true,
+              users: true,
+            } as KubernetesAccessInputFields)
+          : undefined,
+      };
+
+    case 'node':
+      return {
+        component: ServerAccessSection,
+        defaultValue: newResourceAccess('node', defaultRoleVersion),
+        visibleInputFields: hideSomeInputFields
+          ? ({
+              labels: true,
+            } as ServerAccessInputFields)
+          : undefined,
+      };
+
+    case 'windows_desktop':
+      return {
+        component: WindowsDesktopAccessSection,
+        defaultValue: newResourceAccess('windows_desktop', defaultRoleVersion),
+        visibleInputFields: hideSomeInputFields
+          ? ({
+              labels: true,
+            } as WindowsDesktopAccessInputFields)
+          : undefined,
+      };
+
+    default:
+      kind satisfies never;
+  }
 }

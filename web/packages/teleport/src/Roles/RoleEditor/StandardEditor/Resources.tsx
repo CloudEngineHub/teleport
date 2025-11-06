@@ -263,14 +263,14 @@ export function ServerAccessSection({
   validation,
   onChange,
   readOnly = false,
-  showInputField,
+  visibleInputFields,
 }: SectionProps<
   ServerAccess,
   ServerAccessValidationResult,
   ServerAccessInputFields
 >) {
   // Flags to conditionally render input fields.
-  let show: ServerAccessInputFields = showInputField ?? {
+  let show: ServerAccessInputFields = visibleInputFields ?? {
     labels: true,
     logins: true,
   };
@@ -325,14 +325,14 @@ export function KubernetesAccessSection({
   validation,
   onChange,
   readOnly = false,
-  showInputField,
+  visibleInputFields,
 }: SectionProps<
   KubernetesAccess,
   KubernetesAccessValidationResult,
   KubernetesAccessInputFields
 >) {
   // Flags to conditionally render input fields.
-  let show: KubernetesAccessInputFields = showInputField ?? {
+  let show: KubernetesAccessInputFields = visibleInputFields ?? {
     labels: true,
     groups: true,
     users: true,
@@ -632,10 +632,10 @@ export function AppAccessSection({
   isProcessing,
   onChange,
   readOnly = false,
-  showInputField,
+  visibleInputFields,
 }: SectionProps<AppAccess, AppAccessValidationResult, AppAccessInputFields>) {
   // Flags to conditionally render input fields.
-  let show: AppAccessInputFields = showInputField ?? {
+  let show: AppAccessInputFields = visibleInputFields ?? {
     labels: true,
     awsRoleARNs: true,
     azureIdentities: true,
@@ -749,14 +749,14 @@ export function DatabaseAccessSection({
   validation,
   onChange,
   readOnly = false,
-  showInputField,
+  visibleInputFields,
 }: SectionProps<
   DatabaseAccess,
   DatabaseAccessValidationResult,
   DatabaseAccessInputFields
 >) {
   // Flags to conditionally render input fields.
-  let show: DatabaseAccessInputFields = showInputField ?? {
+  let show: DatabaseAccessInputFields = visibleInputFields ?? {
     labels: true,
     names: true,
     users: true,
@@ -875,14 +875,14 @@ export function WindowsDesktopAccessSection({
   validation,
   onChange,
   readOnly = false,
-  showInputField,
+  visibleInputFields,
 }: SectionProps<
   WindowsDesktopAccess,
   WindowsDesktopAccessValidationResult,
   WindowsDesktopAccessInputFields
 >) {
   // Flags to conditionally render input fields.
-  const show: WindowsDesktopAccessInputFields = showInputField ?? {
+  const show: WindowsDesktopAccessInputFields = visibleInputFields ?? {
     labels: true,
     logins: true,
   };
@@ -931,14 +931,14 @@ export function GitHubOrganizationAccessSection({
   validation,
   onChange,
   readOnly = false,
-  showInputField,
+  visibleInputFields,
 }: SectionProps<
   GitHubOrganizationAccess,
   GitHubOrganizationAccessValidationResult,
   GitHubOrganizationAccessInputFields
 >) {
   // Flags to conditionally render input fields.
-  const show: GitHubOrganizationAccessInputFields = showInputField ?? {
+  const show: GitHubOrganizationAccessInputFields = visibleInputFields ?? {
     organizations: true,
   };
 
