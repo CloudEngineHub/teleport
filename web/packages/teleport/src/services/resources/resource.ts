@@ -24,7 +24,10 @@ import api from 'teleport/services/api';
 import { ResourcesResponse, UnifiedResource } from '../agents';
 import auth, { MfaChallengeScope } from '../auth/auth';
 import { MfaChallengeResponse } from '../mfa';
-import { isPathNotFoundError } from '../version/unsupported';
+import {
+  isPathNotFoundError,
+  withGenericUnsupportedError,
+} from '../version/unsupported';
 import { yamlService } from '../yaml';
 import { YamlSupportedResourceKind } from '../yaml/types';
 import {
@@ -130,13 +133,31 @@ class ResourceService {
   }
 
   async fetchRoles(
-    params?: UrlListRolesParams,
+    params?: Omit<UrlListRolesParams, 'withSystemRoles'>,
     signal?: AbortSignal
   ): Promise<{
     items: RoleResource[];
     startKey: string;
   }> {
     return await api.get(cfg.getRoleUrl({ action: 'list', params }), signal);
+  }
+
+  async fetchRolesV2(
+    params?: UrlListRolesParams,
+    signal?: AbortSignal
+  ): Promise<{
+    items: RoleResource[];
+    startKey: string;
+  }> {
+    try {
+      return await api.get(
+        cfg.getRoleUrl({ action: 'listv2', params }),
+        signal
+      );
+    } catch (err) {
+      // TODO(kimlisa) DELETE IN 20.0
+      withGenericUnsupportedError(err, '18.4.0');
+    }
   }
 
   async fetchRequestableRoles(

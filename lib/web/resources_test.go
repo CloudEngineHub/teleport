@@ -307,9 +307,10 @@ func TestListRoles(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
+		require.True(t, req.Filter.SkipSystemRoles)
 
 		return &proto.ListRolesResponse{
-			Roles:   []*types.RoleV6{role.(*types.RoleV6)},
+			Roles:   []*types.RoleV6{role.(*types.RoleV6), role.(*types.RoleV6)},
 			NextKey: "",
 		}, nil
 	}
@@ -318,7 +319,20 @@ func TestListRoles(t *testing.T) {
 	roles, err := listRoles(m, url.Values{})
 	require.NoError(t, err)
 	require.Len(t, roles.Items, 1)
-	require.Contains(t, roles.Items.([]ui.ResourceItem)[0].Content, "name: test")
+	require.Contains(t, roles.Items.([]ui.ResourceItem)[0].Content, "name: tests")
+}
+
+func TestListRolesQueryParamWithSystemRoles(t *testing.T) {
+	m := &mockedResourceAPIGetter{}
+
+	m.mockListRoles = func(ctx context.Context, req *proto.ListRolesRequest) (*proto.ListRolesResponse, error) {
+		require.False(t, req.Filter.SkipSystemRoles)
+		return nil, nil
+	}
+
+	listRoles(m, url.Values{
+		"withSystemRoles": []string{"yes"},
+	})
 }
 
 func TestRoleCRUD(t *testing.T) {
