@@ -23,6 +23,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -1700,4 +1701,49 @@ func TestForwarderTLSConfigCAs(t *testing.T) {
 		},
 	})
 	require.True(t, getConnTLSRootsCalled)
+}
+
+func TestGOAWAYHandling(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	f := newMockForwader(ctx, t)
+
+	f.clusterDetails = map[string]*kubeDetails{
+		"kube-cluster": {
+			kubeCreds: &staticKubeCreds{
+				targetAddr: "https://127.0.0.1",
+				tlsConfig:  &tls.Config{},
+				transport:  goawayRoundTripper{},
+			},
+		},
+	}
+
+	authCtx := mockAuthCtx(t, "kube-cluster", false)
+	sess, err := f.newClusterSession(ctx, authCtx)
+	require.NoError(t, err)
+	t.Cleanup(sess.close)
+
+	fwd, err := f.makeSessionForwarder(sess)
+	require.NoError(t, err)
+
+	forwarderServer := httptest.NewServer(fwd)
+	t.Cleanup(forwarderServer.Close)
+
+	req, err := http.NewRequest("GET", forwarderServer.URL, nil)
+	require.NoError(t, err)
+
+	resp, err := forwarderServer.Client().Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusTooManyRequests, resp.StatusCode)
+	require.Equal(t, "1", resp.Header.Get("Retry-After"))
+	require.NoError(t, resp.Body.Close())
+}
+
+// goawayRoundTripper is an [http.RoundTripper] that returns the same errors
+// that one would get if a proxied Kubernetes API Server closed the connection
+// as a result of the GOAWAY chance being exceeded.
+type goawayRoundTripper struct{}
+
+func (goawayRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	return nil, errors.New("http2: Transport: cannot retry err [http2: Transport received Server's graceful shutdown GOAWAY] after Request.Body was written; define Request.GetBody to avoid this error")
 }
