@@ -22,6 +22,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/gravitational/trace"
 )
 
@@ -83,6 +84,62 @@ func (id *ResourceID) validateK8sSubResource() error {
 	return nil
 }
 
+func (r *ResourceAccessID) GetResourceID() ResourceID {
+	return r.ID
+}
+
+func (r *ResourceAccessID) GetConstraints() *ResourceConstraints {
+	return r.Constraints
+}
+
+// ResourceIDsToResourceAccessIDs wraps a slice of [ResourceID]s into
+// [ResourceAccessID] instances with no additional fields populated.
+func ResourceIDsToResourceAccessIDs(ids []ResourceID) []ResourceAccessID {
+	wrapped := make([]ResourceAccessID, 0, len(ids))
+	for _, id := range ids {
+		wrapped = append(wrapped, ResourceAccessID{ID: id})
+	}
+	return wrapped
+}
+
+// CombineAsResourceAccessIDs converts plain [ResourceID]s to [ResourceAccessID]s
+// and combines them with existing [ResourceAccessID]s into a single slice.
+func CombineAsResourceAccessIDs(ids []ResourceID, accessIDs []ResourceAccessID) []ResourceAccessID {
+	totalLen := len(ids) + len(accessIDs)
+	zipped := make([]ResourceAccessID, 0, totalLen)
+	for _, id := range ids {
+		zipped = append(zipped, ResourceAccessID{ID: id})
+	}
+	zipped = append(zipped, accessIDs...)
+	return zipped
+}
+
+// UnwrapResourceAccessIDs separates a slice of [ResourceAccessID]s back into plain
+// [ResourceID]s, preserving only [ResourceAccessID]s that carry additional
+// information such as Constraints.
+func UnwrapResourceAccessIDs(ids []ResourceAccessID) ([]ResourceID, []ResourceAccessID) {
+	var plainIDs []ResourceID
+	var accessIDs []ResourceAccessID
+	for _, w := range ids {
+		if w.GetConstraints() != nil {
+			accessIDs = append(accessIDs, w)
+		} else {
+			plainIDs = append(plainIDs, w.GetResourceID())
+		}
+	}
+	return plainIDs, accessIDs
+}
+
+// ExtractResourceIDs extracts the underlying [ResourceID] from each
+// [ResourceAccessID], discarding any additional information such as Constraints.
+func ExtractResourceIDs(accessIDs []ResourceAccessID) []ResourceID {
+	ids := make([]ResourceID, 0, len(accessIDs))
+	for _, w := range accessIDs {
+		ids = append(ids, w.GetResourceID())
+	}
+	return ids
+}
+
 // ResourceIDToString marshals a ResourceID to a string.
 func ResourceIDToString(id ResourceID) string {
 	if id.SubResourceName == "" {
@@ -94,9 +151,10 @@ func ResourceIDToString(id ResourceID) string {
 // ResourceIDFromString parses a ResourceID from a string. The string should
 // have been obtained from ResourceIDToString.
 func ResourceIDFromString(raw string) (ResourceID, error) {
-	if len(raw) < 1 || raw[0] != '/' {
+	if len(raw) < 1 || (raw[0] != '/') {
 		return ResourceID{}, trace.BadParameter("%s is not a valid ResourceID string", raw)
 	}
+
 	raw = raw[1:]
 	// Should be safe for any Name as long as the ClusterName and Kind don't
 	// contain slashes, which should never happen.
@@ -132,6 +190,23 @@ func ResourceIDFromString(raw string) (ResourceID, error) {
 	}
 
 	return resourceID, trace.Wrap(resourceID.CheckAndSetDefaults())
+}
+
+// ResourceAccessIDsToBytes serializes a list of ResourceAccessIDs
+// to a protobuf byte string.
+func ResourceAccessIDsToBytes(ids []ResourceAccessID) ([]byte, error) {
+	protoBytes, err := proto.Marshal(&ResourceAccessIDList{Resources: ids})
+	return protoBytes, trace.Wrap(err)
+}
+
+// ResourceAccessIDsFromBytes deserializes a list of ResourceAccessIDs
+// from a protobuf byte string.
+func ResourceAccessIDsFromBytes(raw []byte) ([]ResourceAccessID, error) {
+	var IDList ResourceAccessIDList
+	if err := proto.Unmarshal(raw, &IDList); err != nil {
+		return nil, trace.Wrap(err, "unmarshalling ResourceAccessIDList from bytes")
+	}
+	return IDList.Resources, nil
 }
 
 // ResourceIDsFromStrings parses a list of ResourceIDs from a list of strings.
@@ -188,4 +263,29 @@ func ResourceIDsFromString(raw string) ([]ResourceID, error) {
 		resourceIDs = append(resourceIDs, id)
 	}
 	return resourceIDs, nil
+}
+
+const (
+	ResourceIDSentinelValue = "__SENTINEL__"
+)
+
+// CreateSentinelResourceID creates a [ResourceID] that acts as a sentinel value
+// or placeholder, indicating the absense of a real resource ID.
+//
+// This is necessary when handling requests containing only [ResourceAccessID]s,
+// as an empty list of [AccessRequest.AllowedResourceIDs] is interpreted as "no resource restrictions".
+func CreateSentinelResourceID() ResourceID {
+	return ResourceID{
+		ClusterName: ResourceIDSentinelValue,
+		Kind:        ResourceIDSentinelValue,
+		Name:        ResourceIDSentinelValue,
+	}
+}
+
+// IsSentinelResourceID checks whether the given [ResourceID] is a sentinel value
+// created by [CreateSentinelResourceID].
+func IsSentinelResourceID(id ResourceID) bool {
+	return id.ClusterName == ResourceIDSentinelValue &&
+		id.Kind == ResourceIDSentinelValue &&
+		id.Name == ResourceIDSentinelValue
 }
