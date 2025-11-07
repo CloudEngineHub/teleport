@@ -397,7 +397,7 @@ func (id *Identity) GetEventIdentity() events.Identity {
 		GCPServiceAccounts:       id.GCPServiceAccounts,
 		AccessRequests:           id.ActiveRequests,
 		DisallowReissue:          id.DisallowReissue,
-		AllowedResourceIDs:       id.AllowedResourceIDs,
+		AllowedResourceIDs:       events.ResourceIDs(id.AllowedResourceIDs),
 		AllowedResourceAccessIDs: id.AllowedResourceAccessIDs,
 		PrivateKeyPolicy:         string(id.PrivateKeyPolicy),
 		DeviceExtensions:         devExts,
