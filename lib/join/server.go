@@ -45,6 +45,7 @@ import (
 	"github.com/gravitational/teleport/lib/auth/keystore"
 	"github.com/gravitational/teleport/lib/authz"
 	"github.com/gravitational/teleport/lib/events"
+	"github.com/gravitational/teleport/lib/join/azurejoin"
 	"github.com/gravitational/teleport/lib/join/ec2join"
 	joinauthz "github.com/gravitational/teleport/lib/join/internal/authz"
 	"github.com/gravitational/teleport/lib/join/internal/diagnostic"
@@ -83,6 +84,7 @@ type AuthService interface {
 	GetEC2ClientForEC2JoinMethod() ec2join.EC2Client
 	GetEnv0IDTokenValidator() Env0TokenValidator
 	GetTPMValidator() tpmjoin.TPMValidator
+	GetAzureJoinConfig() *azurejoin.AzureJoinConfig
 	services.Presence
 }
 
@@ -289,6 +291,8 @@ func (s *Server) handleJoinMethod(
 		return s.handleOracleJoin(stream, authCtx, clientInit, token)
 	case types.JoinMethodTPM:
 		return s.handleTPMJoin(stream, authCtx, clientInit, token)
+	case types.JoinMethodAzure:
+		return s.handleAzureJoin(stream, authCtx, clientInit, token)
 	default:
 		// TODO(nklaassen): implement checks for all join methods.
 		return nil, trace.NotImplemented("join method %s is not yet implemented by the new join service", joinMethod)
